@@ -110,6 +110,14 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("--include-static", script)
         self.assertIn("--skip-core-load", script)
 
+    def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn("CREATE OR REPLACE TEMPORARY TABLE", script)
+        self.assertIn("COPY INTO {temp_table}", script)
+        self.assertIn("CREATE OR REPLACE TABLE {DATABASE}.RAW.{target_table}", script)
+        self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
+        self.assertIn("loaded <= 0", script)
+
     def test_large_static_load_is_explicit_opt_in(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('"--include-static"', script)
