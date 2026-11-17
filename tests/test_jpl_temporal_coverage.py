@@ -2,7 +2,10 @@ import unittest
 
 import pandas as pd
 
-from scripts.audit_jpl_temporal_coverage import expected_hours_in_local_month
+from scripts.audit_jpl_temporal_coverage import (
+    expected_hours_in_local_month,
+    build_site_hourly_observed_load,
+)
 from scripts.select_jpl_power_analysis_scope import select_power_stations, EXPECTED_MONTHS
 
 
@@ -40,6 +43,34 @@ class TestJPLTemporalCoverage(unittest.TestCase):
         eligible, excluded = select_power_stations(pd.DataFrame(rows), 99.0)
         self.assertTrue(eligible.empty)
         self.assertEqual(len(excluded), 1)
+
+    def test_site_hourly_grid_includes_hours_without_observations(self):
+        hourly = pd.DataFrame([{
+            "station_id": "EVSE_A",
+            "utc_hour_start": pd.Timestamp("2020-07-01T07:00:00Z"),
+            "local_date": "2020-07-01",
+            "local_hour": 0,
+            "utc_offset": "-0700",
+            "power_samples": 10,
+            "avg_power_kw": 7.5,
+            "total_samples": 10,
+        }])
+        start_local = pd.Timestamp("2020-07-01 00:00:00", tz="America/Los_Angeles")
+        end_local = pd.Timestamp("2020-07-01 02:00:00", tz="America/Los_Angeles")
+
+        site = build_site_hourly_observed_load(
+            hourly, 2, start_local, end_local
+        )
+
+        self.assertEqual(len(site), 2)
+        self.assertEqual(site.iloc[0]["stations_with_power"], 1)
+        self.assertEqual(site.iloc[0]["selected_station_power_coverage_pct"], 50.0)
+        self.assertEqual(site.iloc[0]["sum_station_hour_mean_power_kw"], 7.5)
+        self.assertTrue(site.iloc[0]["site_hour_has_any_observation"])
+        self.assertEqual(site.iloc[1]["stations_with_power"], 0)
+        self.assertEqual(site.iloc[1]["selected_station_power_coverage_pct"], 0.0)
+        self.assertFalse(site.iloc[1]["site_hour_has_any_observation"])
+        self.assertTrue(pd.isna(site.iloc[1]["sum_station_hour_mean_power_kw"]))
 
 
 if __name__ == "__main__":
