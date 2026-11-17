@@ -78,11 +78,11 @@ Required for password authentication:
 Optional:
 - SNOWFLAKE_ROLE
 - SNOWFLAKE_WAREHOUSE (defaults to JPL_ETL_WH)
-- SNOWFLAKE_AUTHENTICATOR (set to externalbrowser only when the account uses browser-based SSO; in that mode SNOWFLAKE_PASSWORD is not required)
+- SNOWFLAKE_AUTHENTICATOR (use OAUTH_AUTHORIZATION_CODE for managed Google OIDC sign-in; use externalbrowser for SAML 2.0 SSO. In either browser-based SSO mode, SNOWFLAKE_PASSWORD is not required)
 
 The account identifier must be copied from Snowsight > account selector > View account details, not copied as the full browser URL. For an organization/account-name account, the connector value is organization-account_name; a legacy account locator is also supported. Do not include https://, a URL path, or .snowflakecomputing.com in SNOWFLAKE_ACCOUNT.
 
-The deployment script loads the repository-root .env with precedence over stale inherited Windows environment variables. Use the exact Snowflake login username, not an assumed display name. If the account uses Google/Microsoft/SSO and has no Snowflake password, set SNOWFLAKE_AUTHENTICATOR=externalbrowser and complete authentication in the browser.
+The deployment script loads the repository-root .env with precedence over stale inherited Windows environment variables. Use the exact Snowflake login username, not an assumed display name. If you click the managed Sign in with Google option (OIDC), set SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE; the connector opens the browser authorization flow. If the account instead uses Google Workspace as a SAML identity provider, set SNOWFLAKE_AUTHENTICATOR=externalbrowser. The two protocols are not interchangeable.
 
 Use a role with privileges to create databases, schemas, warehouses, stages, tables, views and Streamlit apps. Do not share credentials in screenshots or logs.
 
