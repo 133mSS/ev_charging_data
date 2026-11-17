@@ -130,6 +130,11 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("--include-static", script)
         self.assertIn("--skip-core-load", script)
 
+    def test_put_and_copy_stage_directories_end_with_slash(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('stage_path = f"{STAGE}/{stage_folder.strip(chr(47))}/"', script)
+        self.assertIn('stage_path = f"{STAGE}/app/"', script)
+
     def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn("CREATE OR REPLACE TEMPORARY TABLE", script)
