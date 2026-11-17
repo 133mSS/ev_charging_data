@@ -337,6 +337,11 @@ try:
         FROM JPL_ANALYTICS.MART.POWER_STATION_HOUR
     """)
     prow = power_summary.iloc[0]
+    if numeric_or_zero(prow["TOTAL_SAMPLES"]) == 0:
+        st.warning(
+            "Chưa có Static measurements trong Snowflake. Q5 chỉ hiển thị đầy đủ sau khi "
+            "chạy scripts/deploy_snowflake.py --include-static và tạo Power marts."
+        )
     a, b, c, d = st.columns(4)
     a.metric("Static samples", f"{int(numeric_or_zero(prow['TOTAL_SAMPLES'])):,}")
     b.metric("Power row coverage", f"{numeric_or_zero(prow['POWER_ROW_COVERAGE_PCT']):.2f}%")
