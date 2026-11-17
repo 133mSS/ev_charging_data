@@ -129,6 +129,16 @@ The second command uses --skip-core-load so it does not truncate/reload the API 
 
 Re-running reloads the RAW staging tables before COPY. It is a full refresh of these JPL RAW inputs; it does not delete local files or the old PostgreSQL database.
 
+### Recovery after API-first load succeeds but Streamlit publish fails
+
+If the API sessions, userInputs, mapping, warehouse SQL and validation have already completed, but only the final Streamlit deployment step failed, do not reload the three API input files. After pulling the latest main branch, rerun:
+
+~~~powershell
+.\scripts\run_snowflake_deploy.ps1 -SkipCoreLoad
+~~~
+
+This reruns idempotent bootstrap/schema/warehouse/validation steps and retries the Streamlit source upload and app publication. It does not upload Static measurements unless `-IncludeStatic` is explicitly supplied. Confirm the final "Streamlit live version published" message before treating the dashboard as deployed.
+
 ## 8. Manual Snowsight alternative
 
 If the local Snowflake Python connector cannot be installed, execute the SQL files in order from Snowsight Worksheets:
