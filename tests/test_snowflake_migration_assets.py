@@ -136,6 +136,15 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
         self.assertIn("loaded <= 0", script)
 
+    def test_read_only_snowflake_connection_smoke_test_exists(self):
+        script = read("scripts/test_snowflake_connection.py")
+        self.assertIn("from deploy_snowflake import get_connection", script)
+        self.assertIn("CURRENT_USER()", script)
+        self.assertIn("CURRENT_ACCOUNT()", script)
+        self.assertIn("Authentication: SUCCESS", script)
+        self.assertNotIn("CREATE DATABASE", script)
+        self.assertNotIn("COPY INTO", script)
+
     def test_large_static_load_is_explicit_opt_in(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('"--include-static"', script)
