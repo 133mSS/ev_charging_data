@@ -290,7 +290,7 @@ try:
             FROM JPL_ANALYTICS.WAREHOUSE.FACT_USER_REQUESTS
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY SESSION_ID
-                ORDER BY MODIFIED_AT DESC, INPUT_ID DESC
+                ORDER BY MODIFIED_AT DESC NULLS LAST, INPUT_ID DESC
             ) = 1
         )
         SELECT
