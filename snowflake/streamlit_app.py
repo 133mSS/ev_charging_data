@@ -129,7 +129,8 @@ try:
             WITH CALENDAR_DAYS AS (
                 SELECT DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE AS LOCAL_DATE
                 FROM (
-                    SELECT SEQ4() AS DAY_OFFSET, TO_DATE(?) AS START_DATE
+                    SELECT ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS DAY_OFFSET,
+                           TO_DATE(?) AS START_DATE
                     FROM TABLE(GENERATOR(ROWCOUNT => 4000))
                 )
                 WHERE DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE < TO_DATE(?)
@@ -161,7 +162,8 @@ try:
                 COALESCE(A.ENERGY_KWH,0) / NULLIF(C.CALENDAR_DAYS,0) AS AVG_START_HOUR_KWH_PER_DAY
             FROM COUNTS C
             CROSS JOIN (
-                SELECT SEQ4() AS HOUR_VALUE FROM TABLE(GENERATOR(ROWCOUNT => 24))
+                SELECT ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS HOUR_VALUE
+                FROM TABLE(GENERATOR(ROWCOUNT => 24))
             ) H
             LEFT JOIN ACTIVITY A
                 ON A.DAY_TYPE = C.DAY_TYPE AND A.LOCAL_HOUR = H.HOUR_VALUE
