@@ -338,30 +338,52 @@ try:
         ORDER BY LOCAL_MONTH, STATION_ID
     """)
     if not monthly_power.empty:
-        coverage = monthly_power.groupby("LOCAL_MONTH", as_index=False).agg(
-            MEAN_STATION_COVERAGE_PCT=("CALENDAR_HOUR_OBSERVATION_PCT","mean"),
-            STATIONS_WITH_OBSERVATION=("STATION_ID","nunique"),
+        # Complete EVSE × month grid: no row means no observation, not zero Power.
+        station_ids = sorted(monthly_power["STATION_ID"].dropna().unique().tolist())
+        monthly_power["MONTH_LABEL"] = pd.to_datetime(
+            monthly_power["LOCAL_MONTH"]
+        ).dt.strftime("%Y-%m")
+        month_values = sorted(monthly_power["MONTH_LABEL"].unique().tolist())
+        complete_index = pd.MultiIndex.from_product(
+            [station_ids, month_values], names=["STATION_ID", "MONTH_LABEL"]
+        )
+        complete = (
+            monthly_power.set_index(["STATION_ID", "MONTH_LABEL"])
+            .reindex(complete_index)
+            .reset_index()
+        )
+        complete["CALENDAR_HOUR_OBSERVATION_PCT"] = pd.to_numeric(
+            complete["CALENDAR_HOUR_OBSERVATION_PCT"], errors="coerce"
+        ).fillna(0.0)
+        complete["OBSERVED_UTC_HOURS"] = pd.to_numeric(
+            complete["OBSERVED_UTC_HOURS"], errors="coerce"
+        ).fillna(0)
+        coverage = complete.groupby("MONTH_LABEL", as_index=False).agg(
+            MEAN_STATION_COVERAGE_PCT=("CALENDAR_HOUR_OBSERVATION_PCT", "mean"),
+            MEDIAN_STATION_COVERAGE_PCT=("CALENDAR_HOUR_OBSERVATION_PCT", "median"),
+            STATIONS_WITH_OBSERVATION=("OBSERVED_UTC_HOURS", lambda x: int((x > 0).sum())),
         )
         left, right = st.columns(2)
         with left:
             st.plotly_chart(
-                px.line(coverage, x="LOCAL_MONTH", y="MEAN_STATION_COVERAGE_PCT",
-                        markers=True, title="Coverage giờ có quan sát trung bình theo tháng"),
+                px.line(coverage, x="MONTH_LABEL",
+                        y=["MEAN_STATION_COVERAGE_PCT", "MEDIAN_STATION_COVERAGE_PCT"],
+                        markers=True, title="Coverage giờ có quan sát trung bình/trung vị theo tháng"),
                 use_container_width=True,
             )
         with right:
             st.plotly_chart(
-                px.bar(coverage, x="LOCAL_MONTH", y="STATIONS_WITH_OBSERVATION",
+                px.bar(coverage, x="MONTH_LABEL", y="STATIONS_WITH_OBSERVATION",
                        title="Số EVSE có ít nhất một quan sát trong tháng"),
                 use_container_width=True,
             )
         st.plotly_chart(
             px.imshow(
-                monthly_power.pivot(index="STATION_ID", columns="LOCAL_MONTH",
-                                    values="CALENDAR_HOUR_OBSERVATION_PCT").fillna(0),
+                complete.pivot(index="STATION_ID", columns="MONTH_LABEL",
+                               values="CALENDAR_HOUR_OBSERVATION_PCT").fillna(0),
                 aspect="auto",
                 labels={"x":"Tháng","y":"EVSE","color":"Giờ có quan sát (%)"},
-                title="Heatmap coverage EVSE × tháng",
+                title="Heatmap coverage EVSE × tháng (tháng không quan sát = 0%)",
             ),
             use_container_width=True,
         )
