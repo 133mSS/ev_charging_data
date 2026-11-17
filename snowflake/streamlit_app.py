@@ -28,6 +28,12 @@ def show_query_error(title: str, error: Exception) -> None:
     st.error(f"{title}: {error}")
 
 
+def numeric_or_zero(value) -> float:
+    if value is None or pd.isna(value):
+        return 0.0
+    return float(value)
+
+
 st.title("⚡ JPL EV Charging Analytics")
 st.caption(
     "ACN-Data — JPL Arroyo Garage 01 | Snowflake Data Warehouse | "
@@ -332,10 +338,10 @@ try:
     """)
     prow = power_summary.iloc[0]
     a, b, c, d = st.columns(4)
-    a.metric("Static samples", f"{int(prow['TOTAL_SAMPLES'] or 0):,}")
-    b.metric("Power row coverage", f"{float(prow['POWER_ROW_COVERAGE_PCT'] or 0):.2f}%")
-    c.metric("Station-hour buckets", f"{int(prow['STATION_HOUR_BUCKETS'] or 0):,}")
-    d.metric("EVSE có quan sát", f"{int(prow['STATIONS'] or 0):,}")
+    a.metric("Static samples", f"{int(numeric_or_zero(prow['TOTAL_SAMPLES'])):,}")
+    b.metric("Power row coverage", f"{numeric_or_zero(prow['POWER_ROW_COVERAGE_PCT']):.2f}%")
+    c.metric("Station-hour buckets", f"{int(numeric_or_zero(prow['STATION_HOUR_BUCKETS'])):,}")
+    d.metric("EVSE có quan sát", f"{int(numeric_or_zero(prow['STATIONS'])):,}")
 
     monthly_power = query("""
         SELECT *
@@ -392,6 +398,31 @@ try:
             ),
             use_container_width=True,
         )
+
+    site_hour_profile = query("""
+        SELECT
+            LOCAL_HOUR,
+            AVG(STATIONS_WITH_POWER) AS AVG_EVSE_WITH_POWER,
+            MAX(STATIONS_WITH_POWER) AS MAX_EVSE_WITH_POWER,
+            AVG(SELECTED_STATION_POWER_COVERAGE_PCT) AS AVG_HOURLY_COVERAGE_PCT,
+            COUNT_IF(SITE_HOUR_HAS_ANY_OBSERVATION) AS DAYS_HOURS_WITH_OBSERVATION
+        FROM JPL_ANALYTICS.MART.POWER_SITE_HOUR
+        GROUP BY LOCAL_HOUR
+        ORDER BY LOCAL_HOUR
+    """)
+    if not site_hour_profile.empty:
+        st.plotly_chart(
+            px.line(
+                site_hour_profile,
+                x="LOCAL_HOUR",
+                y=["AVG_EVSE_WITH_POWER", "MAX_EVSE_WITH_POWER"],
+                markers=True,
+                title="Số EVSE có ít nhất một mẫu Power theo giờ địa phương",
+                labels={"LOCAL_HOUR": "Giờ", "value": "Số EVSE", "variable": "Chỉ số"},
+            ),
+            use_container_width=True,
+        )
+        st.dataframe(site_hour_profile, use_container_width=True, hide_index=True)
 
     hod = query("""
         SELECT *
