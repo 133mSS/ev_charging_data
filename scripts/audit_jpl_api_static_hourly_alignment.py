@@ -167,7 +167,7 @@ def build_api_hourly_index(
         session_id = str(row.session_id)
         station_id = str(row.station_id)
         sessions_in_window.add(session_id)
-        status = api_status.get(f"API::{session_id}", "UNMAPPED_API")
+        status = api_status.get(session_id, "UNMAPPED_API")
 
         for utc_hour, overlap_minutes in overlaps:
             bucket = hourly[(station_id, utc_hour)]
