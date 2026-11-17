@@ -335,7 +335,8 @@ try:
             COUNT(*) AS STATION_HOUR_BUCKETS,
             COUNT(DISTINCT STATION_ID) AS STATIONS
         FROM JPL_ANALYTICS.MART.POWER_STATION_HOUR
-    """)
+        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
+    """, params)
     prow = power_summary.iloc[0]
     if numeric_or_zero(prow["TOTAL_SAMPLES"]) == 0:
         st.warning(
@@ -351,8 +352,9 @@ try:
     monthly_power = query("""
         SELECT *
         FROM JPL_ANALYTICS.MART.POWER_STATION_MONTH
+        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
         ORDER BY LOCAL_MONTH, STATION_ID
-    """)
+    """, params)
     if not monthly_power.empty:
         # Complete EVSE × month grid: no row means no observation, not zero Power.
         station_ids = sorted(monthly_power["STATION_ID"].dropna().unique().tolist())
@@ -412,9 +414,10 @@ try:
             AVG(SELECTED_STATION_POWER_COVERAGE_PCT) AS AVG_HOURLY_COVERAGE_PCT,
             COUNT_IF(SITE_HOUR_HAS_ANY_OBSERVATION) AS DAYS_HOURS_WITH_OBSERVATION
         FROM JPL_ANALYTICS.MART.POWER_SITE_HOUR
+        WHERE LOCAL_DATE >= TO_DATE(?) AND LOCAL_DATE < TO_DATE(?)
         GROUP BY LOCAL_HOUR
         ORDER BY LOCAL_HOUR
-    """)
+    """, params)
     if not site_hour_profile.empty:
         st.plotly_chart(
             px.line(
@@ -430,10 +433,20 @@ try:
         st.dataframe(site_hour_profile, use_container_width=True, hide_index=True)
 
     hod = query("""
-        SELECT *
-        FROM JPL_ANALYTICS.MART.POWER_HOUR_OF_DAY_PROFILE
+        SELECT
+            LOCAL_HOUR,
+            AVG(AVG_POWER_KW) AS MEAN_STATION_HOUR_POWER_KW,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY AVG_POWER_KW) AS P95_STATION_HOUR_POWER_KW,
+            COUNT(*) AS STATION_HOUR_OBSERVATIONS,
+            COUNT(DISTINCT STATION_ID) AS STATIONS_OBSERVED,
+            SUM(POWER_SAMPLES) AS POWER_SAMPLES,
+            SUM(TOTAL_SAMPLES) AS TOTAL_SAMPLES
+        FROM JPL_ANALYTICS.MART.POWER_STATION_HOUR
+        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
+          AND POWER_SAMPLES > 0
+        GROUP BY LOCAL_HOUR
         ORDER BY LOCAL_HOUR
-    """)
+    """, params)
     if not hod.empty:
         st.plotly_chart(
             px.line(hod, x="LOCAL_HOUR",
