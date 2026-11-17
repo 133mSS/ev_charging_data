@@ -155,7 +155,7 @@ def upload_and_copy(
     # Snowflake PUT reads this existing file and uploads it directly; no temp copy.
     file_uri = "file://" + local_file.resolve().as_posix()
     file_uri = quote_sql_string(file_uri)
-    stage_path = f"{STAGE}/{stage_folder}"
+    # Keep the trailing slash: Snowflake otherwise concatenates the folder\n    # and uploaded filename (e.g. sessionsjpl_sessions_cleaned.csv).\n    stage_path = f"{STAGE}/{stage_folder.strip(chr(47))}/"
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -237,7 +237,7 @@ def deploy_streamlit_app(connection) -> None:
     if not app_file.exists():
         raise FileNotFoundError(app_file)
     file_uri = quote_sql_string("file://" + app_file.resolve().as_posix())
-    stage_path = f"{STAGE}/app"
+    # Directory stage path must end in "/" before PUT and CREATE STREAMLIT.\n    stage_path = f"{STAGE}/app/"
     warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
     with connection.cursor() as cursor:
         cursor.execute(
