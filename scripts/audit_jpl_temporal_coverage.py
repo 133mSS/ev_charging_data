@@ -228,10 +228,24 @@ def build_site_hourly_observed_load(
         "all_selected_stations_have_power",
     ]
 
-    grouped = {
-        utc_hour: group
-        for utc_hour, group in hourly.groupby("utc_hour_start", sort=True)
-    } if not hourly.empty else {}
+    # build_hourly_records() serializes UTC timestamps as ISO-8601 strings.
+    # Normalize them back to timezone-aware pandas Timestamps before dictionary
+    # lookup; otherwise pd.date_range() Timestamp keys never match string keys,
+    # causing every calendar hour to be reported as having zero observations.
+    if not hourly.empty:
+        hourly = hourly.copy()
+        hourly["utc_hour_start"] = pd.to_datetime(
+            hourly["utc_hour_start"],
+            utc=True,
+            errors="coerce",
+        )
+        hourly = hourly.dropna(subset=["utc_hour_start"])
+        grouped = {
+            utc_hour: group
+            for utc_hour, group in hourly.groupby("utc_hour_start", sort=True)
+        }
+    else:
+        grouped = {}
 
     start_utc = start_local.tz_convert("UTC")
     end_utc = end_local.tz_convert("UTC")
