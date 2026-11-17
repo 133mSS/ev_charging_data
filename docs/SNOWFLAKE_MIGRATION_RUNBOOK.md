@@ -92,6 +92,15 @@ First check available free space and make sure the current processed files alrea
 
 The local deployment wrapper creates its own Python virtual environment under %LOCALAPPDATA% (normally on C:) and routes temporary files there, avoiding the nearly-full D: project drive. It installs Snowflake Connector 5.2+, which supports the Python 3.15 interpreter shown in the development environment.
 
+Before deployment, test authentication without modifying Snowflake objects:
+
+~~~powershell
+$py = "$env:LOCALAPPDATA\\JPL-Snowflake-Client\\venv\\Scripts\\python.exe"
+& $py .\\scripts\\test_snowflake_connection.py
+~~~
+
+A successful check prints the current Snowflake user, role, account and region. It does not create a database or warehouse. For managed Google OIDC sign-in, set `SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE` in the project-root `.env`; for SAML Google Workspace use `externalbrowser`. OIDC and SAML are different protocols.
+
 For a low-risk first pass, deploy the database objects and API session inputs without the 175M-row Static load:
 
 ~~~powershell
