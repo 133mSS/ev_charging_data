@@ -72,6 +72,15 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("COPY INTO", script)
         self.assertNotIn("password = '", script.lower())
 
+    def test_first_login_does_not_require_database_or_warehouse_to_exist(self):
+        script = read("scripts/deploy_snowflake.py")
+        start = script.index("    kwargs = {")
+        end = script.index("    }", start)
+        connection_kwargs = script[start:end]
+        self.assertNotIn('"warehouse"', connection_kwargs)
+        self.assertNotIn('"database"', connection_kwargs)
+        self.assertIn('run_sql_file(connection, "snowflake/00_bootstrap.sql")', script)
+
     def test_large_static_load_is_explicit_opt_in(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('"--include-static"', script)
