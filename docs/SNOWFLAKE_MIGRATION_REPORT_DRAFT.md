@@ -93,7 +93,13 @@ The Snowflake deployment package includes:
 - A Python uploader that transfers existing local CSV/CSV.GZ files directly to the Snowflake internal stage using PUT, then loads them through COPY INTO. Large inputs are uploaded without creating local duplicates; Snowflake recommends multiple approximately 100–250 MiB compressed files for efficient COPY parallelism.
 - A Streamlit in Snowflake dashboard that queries Snowflake through the active Snowpark session.
 
-## 7. Account-side deployment status
+## 7. Implementation status in GitHub
+
+The Snowflake migration source code, SQL assets, deployment wrapper, dashboard, runbook and report draft were merged into the repository main branch on **18 November 2026** in commit `95b8176bee656ec28de26dfa7b3e1ff7c1dc456b`. The GitHub Actions workflow on that commit completed successfully: Python entry-point compilation passed and all **37 unit/regression tests passed**.
+
+This verifies repository code checks only. It does not verify SQL execution or data loading in the user's Snowflake account.
+
+## 8. Account-side deployment status
 
 **Pending execution in the Snowflake account:** uploading the source files, running RAW COPY INTO, creating the warehouse objects, building Power marts and publishing the Streamlit app.
 
@@ -106,7 +112,7 @@ After deployment, insert evidence from:
 
 The account screenshot supplied during implementation showed a Snowflake trial with 398 of 400 credits remaining and 13 days left at that time. This is a point-in-time account snapshot and must be refreshed before submission. Snowflake trial usage consumes credits for compute and storage; the trial expires after 30 days or when free usage is depleted, whichever comes first. A suspended trial cannot run warehouses, load data or execute queries until reactivated/upgraded.
 
-## 8. Conclusion
+## 9. Conclusion
 
 The Snowflake migration package establishes a cloud-first target architecture that consolidates storage, ETL, analytical warehouse and dashboard serving in one platform. It is designed to remove the laptop's local compute and storage bottleneck, preserve the genuine multi-source ACN-Data dataset, and retain the analytical logic for the five research questions.
 
