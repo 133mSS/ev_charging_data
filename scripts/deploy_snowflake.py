@@ -34,7 +34,7 @@ from project_config import (  # noqa: E402
 )
 
 # Load local deployment credentials/config before reading optional warehouse name.
-load_dotenv(ROOT / ".env")
+load_dotenv(ROOT / ".env", override=True)
 
 DATABASE = "JPL_ANALYTICS"
 WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
@@ -50,8 +50,11 @@ def get_connection():
             "python -m pip install -r requirements-snowflake.txt"
         ) from exc
 
-    load_dotenv(ROOT / ".env")
-    required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]
+    load_dotenv(ROOT / ".env", override=True)
+    authenticator = os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake").strip().lower()
+    required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
+    if authenticator != "externalbrowser":
+        required.append("SNOWFLAKE_PASSWORD")
     missing = [name for name in required if not os.getenv(name)]
     if missing:
         raise RuntimeError(
@@ -61,12 +64,15 @@ def get_connection():
     # Do not select a database or warehouse at login: on first deployment
     # neither object exists yet. The bootstrap SQL creates them before USE.
     kwargs = {
-        "account": os.environ["SNOWFLAKE_ACCOUNT"],
-        "user": os.environ["SNOWFLAKE_USER"],
-        "password": os.environ["SNOWFLAKE_PASSWORD"],
+        "account": os.environ["SNOWFLAKE_ACCOUNT"].strip(),
+        "user": os.environ["SNOWFLAKE_USER"].strip(),
         "login_timeout": 30,
         "network_timeout": 300,
     }
+    if authenticator == "externalbrowser":
+        kwargs["authenticator"] = "externalbrowser"
+    else:
+        kwargs["password"] = os.environ["SNOWFLAKE_PASSWORD"]
     role = os.getenv("SNOWFLAKE_ROLE")
     if role:
         kwargs["role"] = role
