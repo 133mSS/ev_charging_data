@@ -93,5 +93,32 @@ class TestJPLTemporalCoverage(unittest.TestCase):
         self.assertTrue(pd.isna(site.iloc[1]["sum_station_hour_mean_power_kw"]))
 
 
+    def test_site_hourly_grid_normalizes_iso_utc_string_keys(self):
+        # Production hourly records serialize UTC timestamps as ISO-8601 strings.
+        hourly = pd.DataFrame([{
+            "station_id": "EVSE_A",
+            "utc_hour_start": "2020-07-01T07:00:00+00:00",
+            "local_date": "2020-07-01",
+            "local_hour": 0,
+            "utc_offset": "-0700",
+            "power_samples": 10,
+            "avg_power_kw": 7.5,
+            "total_samples": 10,
+        }])
+        start_local = pd.Timestamp("2020-07-01 00:00:00", tz="America/Los_Angeles")
+        end_local = pd.Timestamp("2020-07-01 02:00:00", tz="America/Los_Angeles")
+
+        site = build_site_hourly_observed_load(
+            hourly, 2, start_local, end_local
+        )
+
+        self.assertEqual(site.iloc[0]["stations_with_any_samples"], 1)
+        self.assertEqual(site.iloc[0]["stations_with_power"], 1)
+        self.assertEqual(site.iloc[0]["power_samples"], 10)
+        self.assertTrue(site.iloc[0]["site_hour_has_any_observation"])
+        self.assertEqual(site.iloc[1]["stations_with_power"], 0)
+        self.assertFalse(site.iloc[1]["site_hour_has_any_observation"])
+
+
 if __name__ == "__main__":
     unittest.main()
