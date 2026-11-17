@@ -1,0 +1,240 @@
+"""Deploy and load the JPL project into Snowflake.
+
+Credentials are read from environment variables; never commit them:
+  SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
+Optional:
+  SNOWFLAKE_ROLE, SNOWFLAKE_WAREHOUSE (default JPL_ETL_WH)
+
+Run from repository root:
+  python scripts/deploy_snowflake.py
+  python scripts/deploy_snowflake.py --include-static
+
+The large Static file is intentionally opt-in because it scans/loads 175M rows
+and consumes trial credits. The script uploads already-compressed files directly
+to an internal stage; it does not create another local copy.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import sys
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from project_config import (  # noqa: E402
+    CLEAN_SESSIONS_FILE,
+    CLEAN_USER_INPUTS_FILE,
+    CLEAN_STATIC_FILE,
+    SESSION_MAPPING_FILE,
+)
+
+
+DATABASE = "JPL_ANALYTICS"
+WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
+STAGE = "@JPL_ANALYTICS.RAW.JPL_RAW_STAGE"
+
+
+def get_connection():
+    try:
+        import snowflake.connector
+    except ImportError as exc:
+        raise RuntimeError(
+            "Snowflake connector not installed. Run: "
+            "python -m pip install -r requirements-snowflake.txt"
+        ) from exc
+
+    load_dotenv(ROOT / ".env")
+    required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]
+    missing = [name for name in required if not os.getenv(name)]
+    if missing:
+        raise RuntimeError(
+            "Missing Snowflake credentials in .env: " + ", ".join(missing)
+        )
+
+    kwargs = {
+        "account": os.environ["SNOWFLAKE_ACCOUNT"],
+        "user": os.environ["SNOWFLAKE_USER"],
+        "password": os.environ["SNOWFLAKE_PASSWORD"],
+        "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH"),
+        "database": DATABASE,
+        "schema": "RAW",
+        "login_timeout": 30,
+        "network_timeout": 300,
+    }
+    role = os.getenv("SNOWFLAKE_ROLE")
+    if role:
+        kwargs["role"] = role
+    return snowflake.connector.connect(**kwargs)
+
+
+def run_sql_file(connection, relative_path: str) -> None:
+    path = ROOT / relative_path
+    if not path.exists():
+        raise FileNotFoundError(path)
+    print(f"\n===== APPLY {relative_path} =====", flush=True)
+    with connection.cursor() as cursor:
+        for result_cursor in cursor.execute_string(
+            path.read_text(encoding="utf-8"),
+            return_cursors=True,
+        ):
+            try:
+                if result_cursor.description:
+                    rows = result_cursor.fetchall()
+                    for row in rows[:10]:
+                        print(row)
+            finally:
+                result_cursor.close()
+
+
+def quote_sql_string(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def upload_and_copy(
+    connection,
+    local_file: Path,
+    stage_folder: str,
+    target_table: str,
+    copy_columns: str | None = None,
+) -> int:
+    if not local_file.exists():
+        raise FileNotFoundError(
+            f"Required processed JPL file not found: {local_file}"
+        )
+    size = local_file.stat().st_size
+    if size > 5 * 1024**3:
+        raise RuntimeError(
+            f"{local_file.name} is larger than Snowflake's 5 GB per-file load limit. "
+            "Split the compressed CSV into smaller gzip parts before upload; "
+            "do not try to upload this file as one object."
+        )
+
+    print(
+        f"\n===== UPLOAD {local_file.name} ({size / 1024**2:,.1f} MiB) =====",
+        flush=True,
+    )
+    # Snowflake PUT reads this existing file and uploads it directly; no temp copy.
+    file_uri = "file://" + local_file.resolve().as_posix()
+    file_uri = quote_sql_string(file_uri)
+    stage_path = f"{STAGE}/{stage_folder}"
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"PUT '{file_uri}' {stage_path} "
+            "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
+        )
+        put_rows = cursor.fetchall()
+        for row in put_rows:
+            print("PUT:", row[:4])
+
+        cursor.execute(f"TRUNCATE TABLE {DATABASE}.RAW.{target_table}")
+        file_name = quote_sql_string(local_file.name)
+        if copy_columns:
+            copy_sql = f"""
+                COPY INTO {DATABASE}.RAW.{target_table} ({copy_columns})
+                FROM (
+                    SELECT * FROM {stage_path}
+                )
+                FILE_FORMAT = (FORMAT_NAME = {DATABASE}.RAW.JPL_CSV_GZ_FORMAT)
+                PATTERN = '.*{file_name}'
+                ON_ERROR = 'ABORT_STATEMENT'
+                FORCE = TRUE
+            """
+        else:
+            copy_sql = f"""
+                COPY INTO {DATABASE}.RAW.{target_table}
+                FROM {stage_path}
+                FILES = ('{file_name}')
+                FILE_FORMAT = (FORMAT_NAME = {DATABASE}.RAW.JPL_CSV_GZ_FORMAT)
+                ON_ERROR = 'ABORT_STATEMENT'
+                FORCE = TRUE
+            """
+        cursor.execute(copy_sql)
+        results = cursor.fetchall()
+        loaded = 0
+        for row in results:
+            print("COPY:", row)
+            # COPY result fields: file, status, rows_parsed, rows_loaded, ...
+            if len(row) > 3 and isinstance(row[3], (int, float)):
+                loaded += int(row[3])
+
+        cursor.execute(
+            f"INSERT INTO {DATABASE}.RAW.LOAD_AUDIT "
+            "(SOURCE_FILE, TARGET_TABLE, ROWS_LOADED, STATUS) "
+            "VALUES (%s, %s, %s, %s)",
+            (local_file.name, target_table, loaded, "LOADED"),
+        )
+        return loaded
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--include-static",
+        action="store_true",
+        help="Upload and load the 175M-row cleaned Static measurements file.",
+    )
+    parser.add_argument(
+        "--skip-core-load",
+        action="store_true",
+        help="Do not upload/reload API sessions and user inputs.",
+    )
+    parser.add_argument(
+        "--skip-marts",
+        action="store_true",
+        help="Do not run the heavy Power marts build after Static is loaded.",
+    )
+    args = parser.parse_args()
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"USE WAREHOUSE {WAREHOUSE}")
+        run_sql_file(connection, "snowflake/00_bootstrap.sql")
+        run_sql_file(connection, "snowflake/01_raw_staging.sql")
+
+        if not args.skip_core_load:
+            upload_and_copy(
+                connection, CLEAN_SESSIONS_FILE, "sessions",
+                "STG_CHARGING_SESSIONS",
+            )
+            upload_and_copy(
+                connection, CLEAN_USER_INPUTS_FILE, "user_inputs",
+                "STG_USER_INPUTS",
+            )
+            upload_and_copy(
+                connection, SESSION_MAPPING_FILE, "session_mapping",
+                "STG_SESSION_MAPPING",
+            )
+
+        if args.include_static:
+            upload_and_copy(
+                connection, CLEAN_STATIC_FILE, "static",
+                "STG_STATIC_MEASUREMENTS",
+            )
+        else:
+            print(
+                "\nStatic upload skipped. Re-run with --include-static "
+                "to load the full Static dataset.",
+                flush=True,
+            )
+
+        run_sql_file(connection, "snowflake/02_warehouse.sql")
+
+        if args.include_static and not args.skip_marts:
+            run_sql_file(connection, "snowflake/03_power_marts.sql")
+
+        run_sql_file(connection, "snowflake/04_validation.sql")
+        print("\nSnowflake deployment/load sequence completed.")
+        print("Open Streamlit in Snowflake using snowflake/streamlit_app.py.")
+    finally:
+        connection.close()
+
+
+if __name__ == "__main__":
+    main()
