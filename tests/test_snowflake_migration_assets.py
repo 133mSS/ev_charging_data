@@ -133,11 +133,27 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
     def test_put_and_copy_stage_directories_end_with_slash(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('return f"{STAGE}/{folder}/"', script)
-        start = script.index("def upload_and_copy(")
-        assignment = script.index("stage_path = build_stage_directory(stage_folder)", start)
-        put = script.index('f"PUT \'{file_uri}\' {stage_path} "', start)
-        self.assertLess(assignment, put)
-        self.assertIn('stage_path = f"{STAGE}/app/"', script)
+
+        upload_start = script.index("def upload_and_copy(")
+        upload_assignment = script.index(
+            "stage_path = build_stage_directory(stage_folder)", upload_start
+        )
+        upload_put = script.index(
+            'f"PUT \'{file_uri}\' {stage_path} "', upload_start
+        )
+        self.assertLess(upload_assignment, upload_put)
+
+        app_start = script.index("def deploy_streamlit_app(")
+        app_assignment = script.index(
+            'stage_path = build_stage_directory("app")', app_start
+        )
+        app_put = script.index(
+            'f"PUT \'{file_uri}\' {stage_path} "', app_start
+        )
+        app_create = script.index("FROM '{stage_path}'", app_start)
+        self.assertLess(app_assignment, app_put)
+        self.assertLess(app_assignment, app_create)
+        self.assertNotIn("\\n    stage_path =", script)
 
     def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
         script = read("scripts/deploy_snowflake.py")
