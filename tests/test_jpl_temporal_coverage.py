@@ -44,6 +44,26 @@ class TestJPLTemporalCoverage(unittest.TestCase):
         self.assertTrue(eligible.empty)
         self.assertEqual(len(excluded), 1)
 
+    def test_missing_observation_is_not_reported_as_device_inactivity(self):
+        rows = []
+        for month in EXPECTED_MONTHS:
+            rows.append({
+                "station_id": "EVSE_INTERMITTENT",
+                "month": month,
+                "total_samples": 0 if month == "2020-09" else 100,
+                "power_samples": 0 if month == "2020-09" else 100,
+                "power_coverage_pct": None if month == "2020-09" else 100.0,
+            })
+        eligible, excluded = select_power_stations(pd.DataFrame(rows), 99.0)
+
+        self.assertTrue(eligible.empty)
+        self.assertEqual(excluded.iloc[0]["months_with_observations"], 4)
+        self.assertEqual(excluded.iloc[0]["missing_observation_months"], "2020-09")
+        self.assertEqual(
+            excluded.iloc[0]["exclusion_reason"],
+            "NOT_OBSERVED_IN_ALL_FIVE_MONTHS",
+        )
+
     def test_site_hourly_grid_includes_hours_without_observations(self):
         hourly = pd.DataFrame([{
             "station_id": "EVSE_A",
