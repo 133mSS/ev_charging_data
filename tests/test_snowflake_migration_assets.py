@@ -50,6 +50,12 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("AVG_SESSIONS_PER_DAY", q1)
         self.assertNotIn("QUALIFY LOCAL_DATE", q1)
 
+    def test_q3_last_current_sample_is_within_api_connection_interval(self):
+        sql = read("snowflake/03_power_marts.sql")
+        view_sql = sql[sql.index("CREATE OR REPLACE VIEW MART.SESSION_POST_CURRENT"):]
+        self.assertIn("L.LAST_NONZERO_CURRENT_UTC >= F.CONNECTION_TIME_UTC", view_sql)
+        self.assertIn("L.LAST_NONZERO_CURRENT_UTC <= F.DISCONNECT_TIME_UTC", view_sql)
+
     def test_q4_selects_latest_request_before_filtering_positive_kwh(self):
         app = read("snowflake/streamlit_app.py")
         q4 = app[app.index("# Q4"):app.index("# Q5")]
