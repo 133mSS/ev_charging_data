@@ -70,6 +70,7 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         q4 = app[app.index("# Q4"):app.index("# Q5")]
         self.assertIn("QUALIFY ROW_NUMBER()", q4)
         self.assertLess(q4.index("QUALIFY ROW_NUMBER()"), q4.index("L.KWH_REQUESTED > 0"))
+        self.assertIn("MODIFIED_AT DESC NULLS LAST", q4)
 
     def test_streamlit_uses_snowflake_active_session_not_local_postgres(self):
         app = read("snowflake/streamlit_app.py")
