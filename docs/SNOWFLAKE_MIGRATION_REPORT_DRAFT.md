@@ -31,6 +31,30 @@ The complete Static feed remains in one raw table. The warehouse Static fact is 
 
 The Snowflake virtual warehouse is configured as X-Small with auto-resume and 60-second auto-suspend to limit trial-credit consumption.
 
+### Architecture flow
+
+~~~mermaid
+flowchart TD
+    API["ACN-Data API<br/>Sessions + userInputs"]
+    STATIC["ACN-Data Static<br/>Per-session electrical samples"]
+    GH["GitHub<br/>Versioned ETL / SQL / dashboard code"]
+    STAGE["Snowflake Internal Stage<br/>JPL_RAW_STAGE"]
+    RAW["RAW schema<br/>API · requests · Static · mapping"]
+    WH["WAREHOUSE schema<br/>Dimensions · session facts · request facts"]
+    MART["MART schema<br/>Session post-current · Power station-hour/month/site-hour"]
+    APP["Streamlit in Snowflake<br/>Q1–Q5"]
+    API --> STAGE
+    STATIC --> STAGE
+    STAGE --> RAW
+    RAW --> WH
+    WH --> MART
+    MART --> APP
+    WH --> APP
+    GH -. deployment code .-> STAGE
+~~~
+
+The cleaned source files are staged from the existing local project by the Snowflake Connector. Data transformations and analytical aggregation after landing are executed in Snowflake SQL; the dashboard reads from Snowflake rather than a local PostgreSQL endpoint.
+
 ## 4. Analytical questions
 
 | Research question | Measures and visual analysis |
