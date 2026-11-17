@@ -245,7 +245,7 @@ The repository now includes a Snowflake-first deployment package. It retains the
 Install the optional Snowflake connector:
 
 ~~~powershell
-python -m pip install -r requirements-snowflake.txt
+.\scripts\run_snowflake_deploy.ps1
 ~~~
 
 Add these values to a local .env file (never commit the real .env):
@@ -258,14 +258,14 @@ SNOWFLAKE_ROLE=<optional-role>
 SNOWFLAKE_WAREHOUSE=JPL_ETL_WH
 ~~~
 
-The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source.
+The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source. The Windows wrapper installs the Snowflake client in %LOCALAPPDATA% and directs temporary files to the system drive, not the nearly-full project drive.
 
 ### Two-step deployment
 
 First deploy the smaller API inputs, create the warehouse objects and publish the dashboard shell:
 
 ~~~powershell
-python scripts/deploy_snowflake.py
+.\scripts\run_snowflake_deploy.ps1
 ~~~
 
 This does **not** load the 175M-row Static file. Q1–Q4 can be validated after the API data loads; Q5 remains unpopulated until Static is loaded.
@@ -273,7 +273,7 @@ This does **not** load the 175M-row Static file. Q1–Q4 can be validated after 
 Before using the remaining Snowflake trial credits, check the current Snowsight credit balance. Then opt in to the large Static upload and Power marts without reloading the API tables:
 
 ~~~powershell
-python scripts/deploy_snowflake.py --include-static --skip-core-load
+.\scripts\run_snowflake_deploy.ps1 -IncludeStatic -SkipCoreLoad
 ~~~
 
 The loader uploads the existing processed files directly to the Snowflake internal stage (PUT) and loads them with COPY INTO; it does not create an additional local data copy. It checks that the single compressed Static file is within the configured per-file load limit. If the check stops, split the compressed input safely before retrying; do not bypass the guard.
