@@ -92,6 +92,12 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('load_dotenv(ROOT / ".env", override=True)', script)
 
+    def test_oauth_authorization_code_uses_token_identity_without_user_parameter(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('if authenticator != "oauth_authorization_code":', script)
+        self.assertIn('if authenticator != "oauth_authorization_code":\n        kwargs["user"]', script)
+        self.assertIn("OAUTH_USERNAMES_MISMATCH", script)
+
     def test_sso_authentication_does_not_require_snowflake_password(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake")', script)
