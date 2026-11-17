@@ -220,11 +220,6 @@ def main() -> None:
         action="store_true",
         help="Do not upload/reload API sessions and user inputs.",
     )
-    parser.add_argument(
-        "--skip-marts",
-        action="store_true",
-        help="Do not run the heavy Power marts build after Static is loaded.",
-    )
     args = parser.parse_args()
 
     connection = get_connection()
@@ -262,8 +257,13 @@ def main() -> None:
 
         run_sql_file(connection, "snowflake/02_warehouse.sql")
 
-        if args.include_static and not args.skip_marts:
-            run_sql_file(connection, "snowflake/03_power_marts.sql")
+        # Always create the compact marts. Without --include-static they are
+        # valid empty outputs, so the core deployment and validation still run.
+        if args.include_static:
+            print("Building Power marts from the complete Static feed...")
+        else:
+            print("Building empty Power marts; Q5 remains pending until Static is loaded.")
+        run_sql_file(connection, "snowflake/03_power_marts.sql")
 
         run_sql_file(connection, "snowflake/04_validation.sql")
         deploy_streamlit_app(connection)
