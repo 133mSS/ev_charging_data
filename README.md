@@ -251,14 +251,16 @@ Install the optional Snowflake connector:
 Add these values to a local .env file (never commit the real .env):
 
 ~~~dotenv
-SNOWFLAKE_ACCOUNT=<your-account-identifier>
-SNOWFLAKE_USER=<your-user>
+SNOWFLAKE_ACCOUNT=<organization-account_name>
+SNOWFLAKE_USER=<snowflake-login-username>
 SNOWFLAKE_PASSWORD=<your-password>
 SNOWFLAKE_ROLE=<optional-role>
 SNOWFLAKE_WAREHOUSE=JPL_ETL_WH
+# For browser-based SSO, comment out SNOWFLAKE_PASSWORD and set:
+# SNOWFLAKE_AUTHENTICATOR=externalbrowser
 ~~~
 
-The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source. The Windows wrapper installs the Snowflake client in %LOCALAPPDATA% and directs temporary files to the system drive, not the nearly-full project drive.
+Use the account identifier from Snowsight > account selector > View account details (do not include https://, URL path or .snowflakecomputing.com). For organization/account names, use organization-account_name. The exact Snowflake login username is required. The connector reads the project-root .env in preference to stale inherited environment variables. If the account only supports browser-based SSO, use SNOWFLAKE_AUTHENTICATOR=externalbrowser and omit the password. The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source. The Windows wrapper installs the Snowflake client in %LOCALAPPDATA% and directs temporary files to the system drive, not the nearly-full project drive.
 
 ### Two-step deployment
 
