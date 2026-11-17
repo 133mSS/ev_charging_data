@@ -91,8 +91,11 @@ def summarize_station_usage(sessions: pd.DataFrame) -> pd.DataFrame:
 def latest_requests_vs_delivery(
     sessions: pd.DataFrame, requests: pd.DataFrame
 ) -> tuple[pd.DataFrame, dict]:
+    # Select the latest input event first, even when its kWh request is null.
+    # Filtering null/zero requests before deduplication would silently fall back
+    # to an older request and misrepresent the user's final recorded preference.
     latest = (
-        requests.dropna(subset=["session_id", "modified_at", "kwh_requested"])
+        requests.dropna(subset=["session_id", "modified_at"])
         .sort_values(["session_id", "modified_at", "input_id"])
         .drop_duplicates("session_id", keep="last")
     )
@@ -101,6 +104,9 @@ def latest_requests_vs_delivery(
         on="session_id",
         how="inner",
         validate="one_to_one",
+    )
+    joined["kwh_requested"] = pd.to_numeric(
+        joined["kwh_requested"], errors="coerce"
     )
     joined = joined[joined["kwh_requested"].gt(0)].copy()
     # Match warehouse.fact_charging_sessions NUMERIC(10,3) precision.
