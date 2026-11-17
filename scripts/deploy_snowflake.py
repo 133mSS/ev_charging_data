@@ -172,6 +172,34 @@ def upload_and_copy(
         return loaded
 
 
+def deploy_streamlit_app(connection) -> None:
+    app_file = ROOT / "snowflake" / "streamlit_app.py"
+    if not app_file.exists():
+        raise FileNotFoundError(app_file)
+    file_uri = quote_sql_string("file://" + app_file.resolve().as_posix())
+    stage_path = f"{STAGE}/app"
+    warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"PUT '{file_uri}' {stage_path} "
+            "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
+        )
+        print("STREAMLIT SOURCE PUT:", cursor.fetchall())
+        cursor.execute(f"""
+            CREATE OR REPLACE STREAMLIT {DATABASE}.ANALYTICS.JPL_EV_CHARGING_DASHBOARD
+            FROM '{stage_path}'
+            MAIN_FILE = 'streamlit_app.py'
+            QUERY_WAREHOUSE = {warehouse}
+            COMMENT = 'JPL EV Charging Analytics Q1-Q5'
+        """)
+        print("Streamlit object created.")
+        cursor.execute(
+            f"ALTER STREAMLIT {DATABASE}.ANALYTICS.JPL_EV_CHARGING_DASHBOARD "
+            "ADD LIVE VERSION FROM LAST"
+        )
+        print("Streamlit live version published.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -230,8 +258,9 @@ def main() -> None:
             run_sql_file(connection, "snowflake/03_power_marts.sql")
 
         run_sql_file(connection, "snowflake/04_validation.sql")
+        deploy_streamlit_app(connection)
         print("\nSnowflake deployment/load sequence completed.")
-        print("Open Streamlit in Snowflake using snowflake/streamlit_app.py.")
+        print("Streamlit app: JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD")
     finally:
         connection.close()
 
