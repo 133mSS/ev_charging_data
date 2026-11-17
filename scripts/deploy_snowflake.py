@@ -136,11 +136,17 @@ def upload_and_copy(
         for row in put_rows:
             print("PUT:", row[:4])
 
-        cursor.execute(f"TRUNCATE TABLE {DATABASE}.RAW.{target_table}")
+        # Load into an isolated temporary table first. The published RAW table
+        # remains intact if PUT/COPY fails or the file contains zero loadable rows.
+        temp_table = f"TMP_LOAD_{target_table}"
+        cursor.execute(
+            f"CREATE OR REPLACE TEMPORARY TABLE {temp_table} "
+            f"LIKE {DATABASE}.RAW.{target_table}"
+        )
         file_name = quote_sql_string(local_file.name)
         if copy_columns:
             copy_sql = f"""
-                COPY INTO {DATABASE}.RAW.{target_table} ({copy_columns})
+                COPY INTO {temp_table} ({copy_columns})
                 FROM (
                     SELECT * FROM {stage_path}
                 )
@@ -151,7 +157,7 @@ def upload_and_copy(
             """
         else:
             copy_sql = f"""
-                COPY INTO {DATABASE}.RAW.{target_table}
+                COPY INTO {temp_table}
                 FROM {stage_path}
                 FILES = ('{file_name}')
                 FILE_FORMAT = (FORMAT_NAME = {DATABASE}.RAW.JPL_CSV_GZ_FORMAT)
@@ -167,6 +173,17 @@ def upload_and_copy(
             if len(row) > 3 and isinstance(row[3], (int, float)):
                 loaded += int(row[3])
 
+        if loaded <= 0:
+            raise RuntimeError(
+                f"Snowflake COPY loaded zero rows from {local_file.name}; "
+                f"existing table {DATABASE}.RAW.{target_table} was not replaced."
+            )
+
+        # CREATE OR REPLACE TABLE is atomic in Snowflake. Publish only after COPY succeeds.
+        cursor.execute(
+            f"CREATE OR REPLACE TABLE {DATABASE}.RAW.{target_table} "
+            f"AS SELECT * FROM {temp_table}"
+        )
         cursor.execute(
             f"INSERT INTO {DATABASE}.RAW.LOAD_AUDIT "
             "(SOURCE_FILE, TARGET_TABLE, ROWS_LOADED, STATUS) "
