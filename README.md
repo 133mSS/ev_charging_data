@@ -107,14 +107,20 @@ streamlit run dashboard/app.py
 
 ## 6. Trạng thái triển khai
 
-- [x] Xác nhận site ID và endpoint API chính thức.
-- [x] Kiểm kê Git tree JPL Static: 27.723 file; 52 filename station IDs; 2018-10-08–2020-12-02; 616,187,585 bytes nén.
-- [x] Thay các đường dẫn và kiểm tra số lượng cố định của Office bằng cấu hình JPL.
-- [ ] Tải API bằng API token trên máy chạy project.
-- [ ] Tải 27.723 file static JPL và chạy transform/matching.
-- [ ] Chốt số phiên API, tỷ lệ ghép, số mẫu, coverage và quality sau khi có dữ liệu thực.
-- [x] Thêm truy vấn và biểu đồ heatmap nhu cầu theo thứ × giờ (chờ dữ liệu JPL để kiểm chứng đầu ra).
-- [ ] Hoàn thiện load profile, mức đồng thời và nhận định dashboard theo kết quả JPL đã xác minh.
+- [x] Xác nhận site ID JPL và endpoint ACN-Data API.
+- [x] Tải/refresh API snapshot: 33.638 session IDs duy nhất.
+- [x] Kiểm kê Static JPL: 27.723 file CSV.GZ; 52 station IDs lịch sử; 2018-10-08 đến 2020-12-02.
+- [x] Transform toàn bộ Static: 175.390.901 measurement rows.
+- [x] Đối chiếu API–Static: 25.647 MATCHED, 1.978 STATIC_ONLY, 7.991 API_ONLY.
+- [x] Audit Power trên toàn bộ Static cho Jul–Nov 2020: 14.427.675 rows, 50 station IDs có quan sát, row-level Power coverage 100%.
+- [x] Phân loại 32 station IDs có quan sát đủ 5 tháng, 18 trạm có dữ liệu gián đoạn và 2 trạm không có quan sát trong cửa sổ.
+- [x] Thêm temporal audit có full UTC-hour grid, kể cả giờ không có quan sát.
+- [x] Thêm script đối chiếu API–Static theo station-hour và dashboard Power đọc từ full-Static outputs.
+- [x] Thêm unit tests và GitHub Actions.
+- [ ] Chạy API–Static hourly alignment trên bộ dữ liệu local sau khi pull nhánh mới.
+- [ ] Rerun temporal audit để tái tạo site-hour CSV theo full-grid mới.
+- [ ] Xác minh dashboard Power trong môi trường Windows và chụp ảnh minh chứng.
+- [ ] Hoàn thiện/kiểm tra phần load aggregate Power vào PostgreSQL nếu cần dùng cho bản dashboard database.
 
 ## 7. Tham khảo
 
