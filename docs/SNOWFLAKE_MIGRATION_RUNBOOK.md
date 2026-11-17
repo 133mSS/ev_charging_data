@@ -70,7 +70,7 @@ Snowflake trial accounts run for 30 days or until free usage is exhausted, which
 
 Copy values from .env.snowflake.example into the local .env. Do not commit the real .env.
 
-Required:
+Required for password authentication:
 - SNOWFLAKE_ACCOUNT
 - SNOWFLAKE_USER
 - SNOWFLAKE_PASSWORD
@@ -78,6 +78,11 @@ Required:
 Optional:
 - SNOWFLAKE_ROLE
 - SNOWFLAKE_WAREHOUSE (defaults to JPL_ETL_WH)
+- SNOWFLAKE_AUTHENTICATOR (set to externalbrowser only when the account uses browser-based SSO; in that mode SNOWFLAKE_PASSWORD is not required)
+
+The account identifier must be copied from Snowsight > account selector > View account details, not copied as the full browser URL. For an organization/account-name account, the connector value is organization-account_name; a legacy account locator is also supported. Do not include https://, a URL path, or .snowflakecomputing.com in SNOWFLAKE_ACCOUNT.
+
+The deployment script loads the repository-root .env with precedence over stale inherited Windows environment variables. Use the exact Snowflake login username, not an assumed display name. If the account uses Google/Microsoft/SSO and has no Snowflake password, set SNOWFLAKE_AUTHENTICATOR=externalbrowser and complete authentication in the browser.
 
 Use a role with privileges to create databases, schemas, warehouses, stages, tables, views and Streamlit apps. Do not share credentials in screenshots or logs.
 
