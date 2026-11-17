@@ -151,6 +151,16 @@ python scripts/audit_jpl_api_static_hourly_alignment.py --start-month 2020-07 --
 
 This expands API connection intervals into UTC-hour buckets and compares them with Static samples from the full cleaned Static file. Outputs are written under data/analytics/jpl_api_static_alignment/.
 
+### One-command run
+
+After the API/Static transforms are complete, this PowerShell command runs unit tests, the full-Static temporal audit and API–Static hourly alignment in order:
+
+~~~powershell
+.\scripts\run_jpl_power_analytics.ps1
+~~~
+
+Add -LaunchDashboard to launch the CSV-driven Power dashboard after the analytics steps finish. Use -ChunkSize 250000 on a lower-memory machine.
+
 ### Power dashboard
 
 ~~~powershell
