@@ -99,6 +99,22 @@ The Snowflake migration source code, SQL assets, deployment wrapper, dashboard, 
 
 This verifies repository code checks only. It does not verify SQL execution or data loading in the user's Snowflake account.
 
+## 8. Account-side deployment checkpoint — 18 November 2026
+
+Based on the deployment output provided during the project run:
+
+- The Snowflake database, five schemas, X-Small warehouse, CSV/GZIP file format and internal stage were created successfully.
+- RAW staging tables were created successfully.
+- The API-first upload and COPY completed sufficiently for validation to report **33,638 API sessions** and **41,207 user-input records** in the warehouse.
+- The current run did not load Static measurements: `STATIC_ALL = 0`, `STATIC_MATCHED = 0`, and `STATIC_ONLY = 0`.
+- Q4 validation reported 31,444 sessions with a valid latest kWh request and a median delivered/requested ratio of approximately 60.09%.
+- Q3 returned zero valid sessions and Q5 returned 3,673 expected UTC hours, zero observed hours and 3,673 hours without observations. These are incomplete Static-dependent results, not evidence that no vehicles charged or the JPL site had no load.
+- The final deployment step stopped while publishing Streamlit because the Python deployment script had an uninitialized `stage_path`. The repository fix now uses the shared stage-path helper and is covered by CI.
+
+**Next action:** pull the latest `main` and run `.scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
+
+This is a partial cloud migration checkpoint based on actual output. It is not yet the completed Q1–Q5 deployment because Q3 and Q5 require Static measurements.
+
 ## 8. Account-side deployment status
 
 **Pending execution in the Snowflake account:** uploading the source files, running RAW COPY INTO, creating the warehouse objects, building Power marts and publishing the Streamlit app.
