@@ -530,11 +530,11 @@ def render_dashboard() -> None:
     left, right = st.columns(2)
 
     if selected_station is None:
-        power_title = "Tổng công suất quan sát được theo giờ"
-        power_caption = "Tổng công suất là tổng trung bình từng trạm trong mỗi phút có dữ liệu; trạm thiếu bản ghi không được giả định bằng 0."
+        power_title = "Tổng các trung bình station-minute có quan sát theo giờ"
+        power_caption = "Chỉ số này cộng trung bình theo trạm trong từng phút có dữ liệu; không phải phụ tải đồng thời/toàn cơ sở vì mẫu giữa các EVSE không được chứng minh là đồng bộ."
     else:
-        power_title = f"Công suất quan sát tại trạm {selected_station} theo giờ"
-        power_caption = f"Công suất chỉ hiển thị các phút có bản ghi của trạm {selected_station}; đường độ bao phủ vẫn tính trên toàn bộ các trạm."
+        power_title = f"Trung bình công suất station-minute tại trạm {selected_station} theo giờ"
+        power_caption = f"Công suất chỉ hiển thị các phút có bản ghi của trạm {selected_station}; đây là trung bình mẫu, không phải đường công suất liên tục."
 
     power_plot = power[
         ["local_hour", "avg_observed_power_kw", "p95_observed_power_kw"]
@@ -571,6 +571,11 @@ def render_dashboard() -> None:
         st.plotly_chart(fig, width="stretch")
 
     st.caption(power_caption)
+    st.info(
+        "Power trong trang này được lấy từ fact_static_measurements đã ghép API–Static. "
+        "Để xem audit trên toàn bộ Static (bao gồm STATIC_ONLY), độ bao phủ đầy đủ 50 EVSE "
+        "và các giờ không có quan sát, chạy riêng: streamlit run dashboard/power_analytics.py."
+    )
     st.subheader("Bảng kiểm tra độ bao phủ")
     coverage_display = power[
         [
