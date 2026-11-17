@@ -111,7 +111,7 @@ Based on the deployment output provided during the project run:
 - Q3 returned zero valid sessions and Q5 returned 3,673 expected UTC hours, zero observed hours and 3,673 hours without observations. These are incomplete Static-dependent results, not evidence that no vehicles charged or the JPL site had no load.
 - The final deployment step stopped while publishing Streamlit because the Python deployment script had an uninitialized `stage_path`. The repository fix now uses the shared stage-path helper and is covered by CI.
 
-**Next action:** pull the latest `main` and run `.+scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
+**Next action:** pull the latest `main` and run `.\scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
 
 This is a partial cloud migration checkpoint based on actual output. It is not yet the completed Q1–Q5 deployment because Q3 and Q5 require Static measurements.
 
