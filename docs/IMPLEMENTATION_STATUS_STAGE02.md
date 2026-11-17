@@ -56,7 +56,7 @@ A sum of station-hour mean Power values is not synchronized facility load. The s
 
 Validated:
 - The user's full-Static temporal audit has completed over all 175,390,901 records.
-- The updated unit-test suite passed in GitHub Actions at commit e33515a254cb8f26c389a588b75c44366d373502.
+- The updated unit-test suite, including API interval ingestion and Static chunk-scan tests, passed in GitHub Actions at commit 3c4fdbe1128dc613eafc04fce9294ac2f6b82c0a.
 - The selector distinguishes missing observation months from missing Power values.
 
 Must still be executed on the user's local dataset after pulling the latest branch:
