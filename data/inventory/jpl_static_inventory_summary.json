@@ -1,15 +1,16 @@
 {
   "repository": "tongxin-li/ACN-Data-Static",
   "branch": "main",
+  "git_commit": "abb7cf15cc7108913e965d4375cc7270d532b65f",
+  "snapshot_date": "2026-11-17",
   "directory": "time series data/jpl/Arroyo_Garage_01",
-  "git_tree_sha": "622e5780628345081ba45ece54b58aec42a478b7",
-  "snapshot_date": "2026-11-10",
   "file_count": 27723,
   "unique_filename_station_ids": 52,
   "date_min": "2018-10-08",
   "date_max": "2020-12-02",
   "compressed_bytes": 616187585,
   "compressed_mib": 587.64,
+  "months_with_data": 27,
   "files_by_year": {
     "2018": 3504,
     "2019": 17129,
