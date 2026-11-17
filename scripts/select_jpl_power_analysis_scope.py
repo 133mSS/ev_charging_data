@@ -71,8 +71,22 @@ def select_power_stations(
         group = df[df["station_id"].eq(station_id)]
         month_power = group.groupby("month")["power_samples"].sum().to_dict()
         month_coverage = group.groupby("month")["power_coverage_pct"].min().to_dict()
-        active_months = sum(float(v) > 0 for v in group.groupby("month")["total_samples"].sum().values)
+        months_with_observations = sum(
+            float(group.loc[group["month"].eq(month), "total_samples"].sum()) > 0
+            for month in EXPECTED_MONTHS
+        )
         months_with_power = sum(float(month_power.get(month, 0)) > 0 for month in EXPECTED_MONTHS)
+        missing_observation_months = [
+            month for month in EXPECTED_MONTHS
+            if float(group.loc[group["month"].eq(month), "total_samples"].sum()) <= 0
+        ]
+        months_without_power = [
+            month for month in EXPECTED_MONTHS
+            if (
+                float(group.loc[group["month"].eq(month), "total_samples"].sum()) > 0
+                and float(month_power.get(month, 0)) <= 0
+            )
+        ]
         min_month_coverage = min(
             [float(month_coverage.get(month, 0) or 0) for month in EXPECTED_MONTHS]
         )
@@ -80,14 +94,18 @@ def select_power_stations(
         power_samples = int(group["power_samples"].sum())
         rows.append({
             "station_id": station_id,
-            "active_months": active_months,
+            "months_with_observations": months_with_observations,
+            # Backward-compatible alias; this counts months with records, not device uptime.
+            "active_months": months_with_observations,
+            "missing_observation_months": ", ".join(missing_observation_months),
+            "months_without_power": ", ".join(months_without_power),
             "months_with_power": months_with_power,
             "total_samples": total_samples,
             "power_samples": power_samples,
             "power_coverage_pct": 100 * power_samples / total_samples if total_samples else 0,
             "minimum_monthly_power_coverage_pct": min_month_coverage,
             "eligible": (
-                active_months == len(EXPECTED_MONTHS)
+                months_with_observations == len(EXPECTED_MONTHS)
                 and months_with_power == len(EXPECTED_MONTHS)
                 and min_month_coverage >= min_monthly_power_coverage
             ),
@@ -100,8 +118,8 @@ def select_power_stations(
     excluded = all_stations[~all_stations["eligible"]].copy()
     excluded["exclusion_reason"] = excluded.apply(
         lambda row: (
-            "NOT_ALL_FIVE_MONTHS_ACTIVE"
-            if row["active_months"] < len(EXPECTED_MONTHS)
+            "NOT_OBSERVED_IN_ALL_FIVE_MONTHS"
+            if row["months_with_observations"] < len(EXPECTED_MONTHS)
             else "POWER_MISSING_IN_ONE_OR_MORE_MONTHS"
             if row["months_with_power"] < len(EXPECTED_MONTHS)
             else "MONTHLY_POWER_COVERAGE_BELOW_THRESHOLD"
@@ -149,6 +167,7 @@ def main() -> None:
     print("===== JPL POWER ANALYSIS SCOPE =====")
     print(f"Historical station IDs in source: {summary['historical_station_ids_in_source']}")
     print(f"Stations with observations in Jul-Nov 2020: {summary['stations_with_any_observation_in_window']}")
+    print(f"Station IDs with observations in selected window: {summary['stations_with_any_observation_in_window']}")
     print(f"Eligible station IDs: {len(eligible)}")
     print(f"Excluded station IDs: {len(excluded)}")
     print(f"Minimum monthly Power coverage threshold: {args.min_monthly_power_coverage:.2f}%")
