@@ -414,11 +414,11 @@ def run(args: argparse.Namespace) -> dict:
         **static_summary,
         "station_hour_rows": len(frame),
         "stations_in_alignment": int(frame["station_id"].nunique()),
-        "api_sessions_with_static_overlap": int(
+        "api_matched_session_hour_pairs": int(
             frame["api_sessions_matched_to_static"].sum()
         ),
         "api_only_session_hour_pairs": int(frame["api_sessions_api_only"].sum()),
-        "static_sessions_with_samples": int(
+        "static_session_hour_pairs_with_samples": int(
             frame["static_sessions_with_samples"].sum()
         ),
         "static_only_session_hour_pairs": int(
@@ -447,7 +447,11 @@ def run(args: argparse.Namespace) -> dict:
     print(f"Static rows in window: {summary['static_rows_in_window']:,}")
     print(f"Stations in alignment: {summary['stations_in_alignment']:,}")
     print(f"Station-hour rows: {summary['station_hour_rows']:,}")
-    print(f"Static Power sample coverage: {summary['static_power_sample_coverage_pct']:.3f}%")
+    power_coverage = summary["static_power_sample_coverage_pct"]
+    print(
+        "Static Power sample coverage: "
+        + (f"{power_coverage:.3f}%" if power_coverage is not None else "N/A")
+    )
     print(f"Output: {OUTPUT_DIR}")
     return summary
 
