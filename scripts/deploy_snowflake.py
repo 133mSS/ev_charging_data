@@ -185,6 +185,14 @@ def deploy_streamlit_app(connection) -> None:
             "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
         )
         print("STREAMLIT SOURCE PUT:", cursor.fetchall())
+        environment_file = ROOT / "snowflake" / "environment.yml"
+        if environment_file.exists():
+            env_uri = quote_sql_string("file://" + environment_file.resolve().as_posix())
+            cursor.execute(
+                f"PUT '{env_uri}' {stage_path} "
+                "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
+            )
+            print("STREAMLIT ENVIRONMENT PUT:", cursor.fetchall())
         cursor.execute(f"""
             CREATE OR REPLACE STREAMLIT {DATABASE}.ANALYTICS.JPL_EV_CHARGING_DASHBOARD
             FROM '{stage_path}'
