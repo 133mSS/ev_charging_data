@@ -95,9 +95,9 @@ try:
     """, params)
     row = overview.iloc[0]
     c1, c2, c3 = st.columns(3)
-    c1.metric("Tổng phiên sạc", f"{int(row['SESSION_COUNT'] or 0):,}")
-    c2.metric("Tổng năng lượng", f"{float(row['TOTAL_ENERGY_KWH'] or 0):,.1f} kWh")
-    c3.metric("Năng lượng trung bình/phiên", f"{float(row['AVG_ENERGY_PER_SESSION_KWH'] or 0):,.2f} kWh")
+    c1.metric("Tổng phiên sạc", f"{int(numeric_or_zero(row['SESSION_COUNT'])):,}")
+    c2.metric("Tổng năng lượng", f"{numeric_or_zero(row['TOTAL_ENERGY_KWH']):,.1f} kWh")
+    c3.metric("Năng lượng trung bình/phiên", f"{numeric_or_zero(row['AVG_ENERGY_PER_SESSION_KWH']):,.2f} kWh")
 except Exception as exc:
     show_query_error("Không tải được KPI tổng quan", exc)
     st.stop()
@@ -274,9 +274,9 @@ try:
     """, params)
     qrow = q3b.iloc[0]
     a, b, c = st.columns(3)
-    a.metric("Phiên đủ mốc dòng điện", f"{int(qrow['VALID_SESSIONS'] or 0):,}")
-    b.metric("Trung vị sau mẫu cuối", f"{float(qrow['MEDIAN_POST_CURRENT_MINUTES'] or 0):.1f} phút")
-    c.metric("P95 sau mẫu cuối", f"{float(qrow['P95_POST_CURRENT_MINUTES'] or 0):.1f} phút")
+    a.metric("Phiên đủ mốc dòng điện", f"{int(numeric_or_zero(qrow['VALID_SESSIONS'])):,}")
+    b.metric("Trung vị sau mẫu cuối", f"{numeric_or_zero(qrow['MEDIAN_POST_CURRENT_MINUTES']):.1f} phút")
+    c.metric("P95 sau mẫu cuối", f"{numeric_or_zero(qrow['P95_POST_CURRENT_MINUTES']):.1f} phút")
     st.caption("Mốc cuối được tính trực tiếp từ timestamp có charging_current_a > 0 trong Static. Chỉ các phiên ghép được với API mới có disconnect_time để tính khoảng sau kết nối.")
 except Exception as exc:
     show_query_error("Lỗi Q3; kiểm tra MART.SESSION_POST_CURRENT và dữ liệu Static", exc)
