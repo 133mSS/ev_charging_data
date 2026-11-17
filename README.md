@@ -213,6 +213,7 @@ Use this cohort for like-for-like month comparisons only. Do not discard the oth
 - API session minutes are session-minutes and can overlap; they are not unique occupied wall-clock minutes.
 - For definitions, results, evidence screenshots and the full runbook, see docs/JPL_POWER_ANALYTICS_FINAL.md.
 
+
 ## 9. Snowflake cloud deployment (new)
 
 The repository now includes a Snowflake-first deployment package. It retains the local PostgreSQL implementation as a reference/fallback and does not delete or overwrite local source data.
@@ -288,4 +289,3 @@ Run snowflake/04_validation.sql in Snowsight or inspect its output from the depl
 The deploy script creates JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD and publishes a live Streamlit version. Open the Streamlit object from Snowsight.
 
 **Implementation status:** deployment SQL, loader, app and report/runbook assets are committed to this branch. The user's Snowflake account has not yet been connected or loaded by this repository change. Do not report the Snowflake warehouse/dashboard as operational until the account-side deployment, row-count reconciliation and dashboard screenshots have been completed.
-
