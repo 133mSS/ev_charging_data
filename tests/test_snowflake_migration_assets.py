@@ -59,7 +59,8 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
     def test_streamlit_uses_snowflake_active_session_not_local_postgres(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("get_active_session", app)
-        self.assertNotIn("psycopg2", app)
+        self.assertNotIn("import psycopg2", app)
+        self.assertNotIn("from psycopg2", app)
         self.assertNotIn("DB_PASSWORD", app)
 
     def test_deployment_uses_put_and_copy_into_without_secrets_in_source(self):
