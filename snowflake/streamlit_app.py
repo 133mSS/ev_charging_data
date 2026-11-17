@@ -127,9 +127,12 @@ try:
 
         weekday_weekend = query("""
             WITH CALENDAR_DAYS AS (
-                SELECT DATEADD(DAY, SEQ4(), TO_DATE(?))::DATE AS LOCAL_DATE
-                FROM TABLE(GENERATOR(ROWCOUNT => 4000))
-                QUALIFY LOCAL_DATE < TO_DATE(?)
+                SELECT DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE AS LOCAL_DATE
+                FROM (
+                    SELECT SEQ4() AS DAY_OFFSET, TO_DATE(?) AS START_DATE
+                    FROM TABLE(GENERATOR(ROWCOUNT => 4000))
+                )
+                WHERE DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE < TO_DATE(?)
             ),
             DAY_TYPES AS (
                 SELECT
