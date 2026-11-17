@@ -23,6 +23,7 @@ MONTHLY_COVERAGE_CANDIDATES = [
     INVENTORY_DIR / "jpl_sensor_coverage_all_static_by_station_month.csv",
     INVENTORY_DIR / "jpl_sensor_coverage_by_station_month.csv",
     INVENTORY_DIR / "jpl_sensor_coverage_by_station_month.csv.gz",
+    INVENTORY_DIR / "jpl_sensor_coverage_all_static.csv",
 ]
 START_MONTH = "2020-07"
 END_MONTH = "2020-11"
