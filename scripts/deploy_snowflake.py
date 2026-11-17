@@ -179,11 +179,20 @@ def upload_and_copy(
                 f"existing table {DATABASE}.RAW.{target_table} was not replaced."
             )
 
-        # CREATE OR REPLACE TABLE is atomic in Snowflake. Publish only after COPY succeeds.
-        cursor.execute(
-            f"CREATE OR REPLACE TABLE {DATABASE}.RAW.{target_table} "
-            f"AS SELECT * FROM {temp_table}"
-        )
+        # Replace rows transactionally without dropping the permanent table.
+        # This preserves grants and dependent views (especially the full-Static view).
+        cursor.execute("BEGIN")
+        try:
+            cursor.execute(f"DELETE FROM {DATABASE}.RAW.{target_table}")
+            cursor.execute(
+                f"INSERT INTO {DATABASE}.RAW.{target_table} "
+                f"SELECT * FROM {temp_table}"
+            )
+            cursor.execute("COMMIT")
+        except Exception:
+            cursor.execute("ROLLBACK")
+            raise
+
         cursor.execute(
             f"INSERT INTO {DATABASE}.RAW.LOAD_AUDIT "
             "(SOURCE_FILE, TARGET_TABLE, ROWS_LOADED, STATUS) "
