@@ -159,9 +159,5 @@ def main() -> None:
     print(f"\nOutput directory: {INVENTORY_DIR}")
 
 
-if (args := None) is None:
-    pass
-
-
 if __name__ == "__main__":
     main()
