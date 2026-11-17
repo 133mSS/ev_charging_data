@@ -207,37 +207,91 @@ def build_station_hour_of_day_profile(hourly: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=columns)
 
 
-def build_site_hourly_observed_load(hourly: pd.DataFrame, selected_station_count: int) -> pd.DataFrame:
+def build_site_hourly_observed_load(
+    hourly: pd.DataFrame,
+    selected_station_count: int,
+    start_local: pd.Timestamp,
+    end_local: pd.Timestamp,
+) -> pd.DataFrame:
+    """Build a complete UTC-hour grid, including hours with no observations.
+
+    The sum of station-hour means is retained only as a descriptive statistic.
+    Samples from different EVSEs are not guaranteed to be simultaneous, so this
+    column must never be labelled as facility demand or total site load.
+    """
     columns = [
         "utc_hour_start", "local_date", "local_hour", "utc_offset",
         "stations_with_any_samples", "stations_with_power",
         "selected_station_count", "selected_station_power_coverage_pct",
-        "observed_power_sum_kw", "power_samples", "total_samples",
+        "sum_station_hour_mean_power_kw", "mean_station_hour_mean_power_kw",
+        "power_samples", "total_samples", "site_hour_has_any_observation",
         "all_selected_stations_have_power",
     ]
-    if hourly.empty:
-        return pd.DataFrame(columns=columns)
+
+    grouped = {
+        utc_hour: group
+        for utc_hour, group in hourly.groupby("utc_hour_start", sort=True)
+    } if not hourly.empty else {}
+
+    start_utc = start_local.tz_convert("UTC")
+    end_utc = end_local.tz_convert("UTC")
+    expected_utc_hours = pd.date_range(
+        start=start_utc,
+        end=end_utc,
+        freq="h",
+        inclusive="left",
+    )
+
     rows = []
-    for utc_hour, group in hourly.groupby("utc_hour_start", sort=True):
-        with_power = group.loc[group["power_samples"].gt(0)]
-        stations_with_power = int(with_power["station_id"].nunique())
-        stations_with_samples = int(group["station_id"].nunique())
-        first = group.iloc[0]
+    for utc_hour in expected_utc_hours:
+        local_hour = utc_hour.tz_convert(TIMEZONE)
+        group = grouped.get(utc_hour)
+
+        if group is None:
+            stations_with_samples = 0
+            stations_with_power = 0
+            power_samples = 0
+            total_samples = 0
+            sum_station_means = None
+            mean_station_means = None
+        else:
+            with_power = group.loc[group["power_samples"].gt(0)]
+            stations_with_power = int(with_power["station_id"].nunique())
+            stations_with_samples = int(group["station_id"].nunique())
+            power_samples = int(group["power_samples"].sum())
+            total_samples = int(group["total_samples"].sum())
+            sum_station_means = (
+                float(with_power["avg_power_kw"].sum())
+                if not with_power.empty else None
+            )
+            mean_station_means = (
+                float(with_power["avg_power_kw"].mean())
+                if not with_power.empty else None
+            )
+
         rows.append({
-            "utc_hour_start": utc_hour,
-            "local_date": first["local_date"],
-            "local_hour": int(first["local_hour"]),
-            "utc_offset": first["utc_offset"],
+            "utc_hour_start": utc_hour.isoformat(),
+            "local_date": local_hour.strftime("%Y-%m-%d"),
+            "local_hour": int(local_hour.hour),
+            "utc_offset": local_hour.strftime("%z"),
             "stations_with_any_samples": stations_with_samples,
             "stations_with_power": stations_with_power,
             "selected_station_count": selected_station_count,
-            "selected_station_power_coverage_pct": 100.0 * stations_with_power / selected_station_count if selected_station_count else None,
-            # This is a sum over observed stations only; missing stations are not zero-filled.
-            "observed_power_sum_kw": float(with_power["avg_power_kw"].sum()) if not with_power.empty else None,
-            "power_samples": int(group["power_samples"].sum()),
-            "total_samples": int(group["total_samples"].sum()),
-            "all_selected_stations_have_power": stations_with_power == selected_station_count,
+            "selected_station_power_coverage_pct": (
+                100.0 * stations_with_power / selected_station_count
+                if selected_station_count else None
+            ),
+            "sum_station_hour_mean_power_kw": sum_station_means,
+            "mean_station_hour_mean_power_kw": mean_station_means,
+            "power_samples": power_samples,
+            "total_samples": total_samples,
+            "site_hour_has_any_observation": stations_with_samples > 0,
+            "all_selected_stations_have_power": (
+                stations_with_power == selected_station_count
+                if selected_station_count else False
+            ),
         })
+
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -354,7 +408,7 @@ def run(args: argparse.Namespace) -> dict:
     selected_count = len(selected_stations) if selected_stations else int(hourly["station_id"].nunique())
     station_month = build_station_month_summary(hourly)
     station_hour_profile = build_station_hour_of_day_profile(hourly)
-    site_hourly = build_site_hourly_observed_load(hourly, selected_count)
+    site_hourly = build_site_hourly_observed_load(hourly, selected_count, start_local, end_local)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     hourly.to_csv(OUTPUT_DIR / "jpl_station_hourly_temporal_coverage.csv", index=False)
@@ -374,6 +428,12 @@ def run(args: argparse.Namespace) -> dict:
         "invalid_timestamps": invalid_timestamps,
         "station_hour_buckets": len(hourly),
         "site_hour_buckets": len(site_hourly),
+        "expected_calendar_hours": len(site_hourly),
+        "site_hours_with_any_observation": int(site_hourly["site_hour_has_any_observation"].sum()),
+        "site_hours_without_any_observation": int((~site_hourly["site_hour_has_any_observation"]).sum()),
+        "site_hour_observation_pct": float(
+            100.0 * site_hourly["site_hour_has_any_observation"].mean()
+        ),
         "months_present": sorted(station_month["month"].unique().tolist()),
         "power_samples": int(hourly["power_samples"].sum()),
         "total_samples": int(hourly["total_samples"].sum()),
@@ -390,9 +450,10 @@ def run(args: argparse.Namespace) -> dict:
             "jpl_site_hourly_observed_load.csv",
         ],
         "interpretation_warning": (
-            "Observed calendar-hour coverage is presence of at least one Static sample, "
-            "not EVSE uptime. observed_power_sum_kw sums only stations with Power samples; "
-            "missing stations are not treated as zero."
+            "Calendar-hour coverage is presence of at least one Static sample, not EVSE uptime. "
+            "The site-hour output is a complete UTC-hour grid including zero-observation hours. "
+            "sum_station_hour_mean_power_kw is the sum of station-hour sample means, not a "
+            "synchronized facility load; stations without observations are not zero-filled."
         ),
     }
     (OUTPUT_DIR / "jpl_temporal_coverage_summary.json").write_text(
@@ -404,6 +465,10 @@ def run(args: argparse.Namespace) -> dict:
     print(f"Rows in selected period: {selected_period_rows:,}")
     print(f"Station-hour buckets: {len(hourly):,}")
     print(f"Power coverage in selected records: {summary['power_sample_coverage_pct']:.3f}%")
+    print(f"Expected calendar hours: {summary['expected_calendar_hours']:,}")
+    print(f"Hours with any observation: {summary['site_hours_with_any_observation']:,}")
+    print(f"Hours without any observation: {summary['site_hours_without_any_observation']:,}")
+    print(f"Site-hour observation coverage: {summary['site_hour_observation_pct']:.3f}%")
     print(f"Hours with all selected stations having Power: {summary['hours_with_all_selected_stations_power']:,}")
     print(f"Output directory: {OUTPUT_DIR}")
     return summary
