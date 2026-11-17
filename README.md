@@ -121,3 +121,37 @@ streamlit run dashboard/app.py
 - ACN-Data dataset/API: https://ev.caltech.edu/dataset.html
 - ACN-Data Static: https://github.com/tongxin-li/ACN-Data-Static
 - Lee, Z. J., Li, T., & Low, S. H. (2019). *ACN-Data: Analysis and Applications of an Open EV Charging Dataset*, ACM e-Energy '19.
+
+
+## 8. Power analysis scope and temporal coverage
+
+The first full-Static audit identified 32 first-pass EVSE candidates with Static samples and non-null Power measurements in each month from July through November 2020. This first-pass criterion does not establish continuous hourly observation.
+
+Rebuild the reproducible scope using the full-Static station/month coverage output:
+
+\`\`\`powershell
+python scripts/select_jpl_power_analysis_scope.py --min-monthly-power-coverage 99
+\`\`\`
+
+The default 99% threshold is evaluated separately in each month. The selected list may therefore contain fewer than the 32 first-pass candidates.
+
+Then audit actual calendar-hour observation and sample density using the full cleaned Static dataset (not the API-matched-only measurements):
+
+\`\`\`powershell
+python scripts/audit_jpl_temporal_coverage.py --start-month 2020-07 --end-month 2020-11
+\`\`\`
+
+For a lower-memory run:
+
+\`\`\`powershell
+python scripts/audit_jpl_temporal_coverage.py --chunksize 250000
+\`\`\`
+
+Outputs are written to the folder **data/analytics/jpl_power_temporal/**:
+- jpl_station_hourly_temporal_coverage.csv
+- jpl_station_month_temporal_coverage.csv
+- jpl_station_hour_of_day_profile.csv
+- jpl_site_hourly_observed_load.csv
+- jpl_temporal_coverage_summary.json
+
+**Interpretation:** calendar-hour observation coverage is not EVSE uptime. Site Power is summed only across stations with Power observations in that hour; missing stations are never filled with zero. The current fact_static_measurements table uses API-matched rows only and must not be the sole source for Power analysis because it excludes STATIC_ONLY measurements. See docs/JPL_POWER_TEMPORAL_AUDIT.md for definitions and the Warehouse design decision.
