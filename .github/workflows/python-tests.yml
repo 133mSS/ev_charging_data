@@ -25,5 +25,8 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pandas python-dotenv
 
+      - name: Compile Snowflake deployment and Streamlit sources
+        run: python -m py_compile scripts/deploy_snowflake.py snowflake/streamlit_app.py
+
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
