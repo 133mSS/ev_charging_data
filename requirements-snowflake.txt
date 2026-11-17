@@ -1,0 +1,3 @@
+# Snowflake Connector 5.2+ supports CPython 3.15 (the project's current local interpreter).
+snowflake-connector-python>=5.2,<6
+python-dotenv>=1.0

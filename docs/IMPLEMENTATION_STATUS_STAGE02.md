@@ -96,3 +96,50 @@ To launch the Power dashboard automatically after the two audit scripts:
 ~~~powershell
 .\scripts\run_jpl_power_analytics.ps1 -LaunchDashboard
 ~~~
+
+
+
+## 7. Snowflake migration implementation (new branch content)
+
+### Implemented in GitHub
+
+- Snowflake bootstrap: database, schemas, X-Small auto-suspending warehouse, internal stage and CSV file format.
+- RAW landing tables for API sessions, userInputs, complete Static measurements and session mapping.
+- Warehouse dimensions, API charging-session fact, user-request fact and a full-Static view that retains STATIC_ONLY sessions.
+- Power marts for the last positive current measurement, station-hour Power, station-month observation coverage, complete UTC site-hour calendar and hour-of-day profile.
+- Validation SQL for source counts and Q1–Q5.
+- Python deployment client using Snowflake PUT and COPY INTO to move already-cleaned local files directly to the internal stage; Static upload is explicit opt-in.
+- Streamlit in Snowflake application using the active Snowpark session.
+- Windows deployment instructions, environment example, runbook and report draft.
+- CI now compiles the Snowflake Python entry points and runs source-level migration tests.
+
+### Not yet executed in the account
+
+- No Snowflake credentials were supplied to the repository workflow and no account-side login was performed.
+- No source files have yet been uploaded to the user's Snowflake stage by this implementation.
+- No RAW/WAREHOUSE/MART row counts have yet been confirmed in Snowsight.
+- The Streamlit app object has not yet been created in the user's Snowflake account.
+- Trial credit usage for the full 175M-row load and Power mart build is therefore not yet known.
+
+### Required account-side sequence
+
+1. Review the current Snowflake trial credit balance and expiry in Snowsight.
+2. Add SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER and SNOWFLAKE_PASSWORD to local .env (do not commit it).
+3. Install requirements-snowflake.txt.
+4. Run scripts/deploy_snowflake.py to load API sessions/userInputs/mapping and validate Q1–Q4 schema.
+5. Check trial credits and the uploaded API row counts.
+6. Run scripts/deploy_snowflake.py --include-static to load the full Static dataset and build Q5 marts, only if the trial balance is sufficient.
+7. Confirm the 3,673-row Power site-hour calendar, Static measurement counts, and the Q1–Q5 Streamlit dashboard.
+8. Capture account evidence and update the report draft with the real account-side numbers.
+
+**Reporting boundary:** as of this commit, the Snowflake migration code and deployment package are implemented in the repository, but the Snowflake account migration is pending. The report must describe the former as implemented and the latter as pending until actual Snowflake query results and dashboard screenshots exist.
+
+
+## 8. Final Snowflake repository integration status (18 Nov 2026)
+
+- Snowflake deployment code, SQL schemas/marts, Streamlit dashboard, Windows wrapper, runbook and report draft have been merged into main.
+- Main commit: 95b8176bee656ec28de26dfa7b3e1ff7c1dc456b.
+- GitHub Actions after merge: Python compile step passed; 37 unit/regression tests passed.
+- Account-side Snowflake load and dashboard verification remain pending. No claim is made that the 175,390,901 Static measurement rows have already been loaded into Snowflake.
+- Next account-side action: configure local .env, run the API-first deployment, verify credits and row counts, then opt in to the Static load with -IncludeStatic -SkipCoreLoad.
+
