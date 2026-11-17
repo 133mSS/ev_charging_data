@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ev-charging-jpl-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ev_charging_jpl}
+      POSTGRES_USER: ${DB_USER:-ev_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ev_password}
+    ports:
+      - "${DB_PORT:-5436}:5432"
+    volumes:
+      - postgres_data_jpl:/var/lib/postgresql/data
+
+volumes:
+  postgres_data_jpl:

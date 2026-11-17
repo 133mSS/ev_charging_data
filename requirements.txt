@@ -1,0 +1,13 @@
+# Thu thập & làm sạch dữ liệu
+pandas==3.0.6
+numpy==2.5.3
+requests==2.34.2
+python-dotenv>=1.0
+
+# Kết nối PostgreSQL
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+
+# Trực quan hóa & dashboard
+plotly==7.1.0
+streamlit==1.65.0
