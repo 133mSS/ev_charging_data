@@ -256,8 +256,9 @@ SNOWFLAKE_USER=<snowflake-login-username>
 SNOWFLAKE_PASSWORD=<your-password>
 SNOWFLAKE_ROLE=<optional-role>
 SNOWFLAKE_WAREHOUSE=JPL_ETL_WH
-# For browser-based SSO, comment out SNOWFLAKE_PASSWORD and set:
-# SNOWFLAKE_AUTHENTICATOR=externalbrowser
+# For Sign in with Google (managed OIDC), comment out password and set:
+# SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE
+# For Google Workspace SAML instead, use externalbrowser.
 ~~~
 
 Use the account identifier from Snowsight > account selector > View account details (do not include https://, URL path or .snowflakecomputing.com). For organization/account names, use organization-account_name. The exact Snowflake login username is required. The connector reads the project-root .env in preference to stale inherited environment variables. If the account only supports browser-based SSO, use SNOWFLAKE_AUTHENTICATOR=externalbrowser and omit the password. The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source. The Windows wrapper installs the Snowflake client in %LOCALAPPDATA% and directs temporary files to the system drive, not the nearly-full project drive.
