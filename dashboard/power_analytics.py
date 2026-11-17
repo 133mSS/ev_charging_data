@@ -166,9 +166,10 @@ selected_station = (
 sh = station_hour[
     station_hour["local_month"].between(start_month, end_month)
 ].copy()
-sm = station_month[
+sm_scope = station_month[
     station_month["month"].between(start_month, end_month)
 ].copy()
+sm = sm_scope.copy()
 site = site_hour[
     site_hour["local_month"].between(start_month, end_month)
 ].copy()
@@ -211,7 +212,7 @@ coverage_rows = []
 for month in month_options:
     if not (start_month <= month <= end_month):
         continue
-    month_data = sm[sm["month"].eq(month)].set_index("station_id")
+    month_data = sm_scope[sm_scope["month"].eq(month)].set_index("station_id")
     values = [
         float(month_data.loc[sid, "calendar_hour_observation_pct"])
         if sid in month_data.index
@@ -257,7 +258,7 @@ with right:
     st.plotly_chart(fig, width="stretch")
 
 st.subheader("Coverage theo từng EVSE và tháng")
-heatmap = sm.pivot_table(
+heatmap = sm_scope.pivot_table(
     index="station_id",
     columns="month",
     values="calendar_hour_observation_pct",
