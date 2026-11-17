@@ -155,7 +155,7 @@ def upload_and_copy(
     # Snowflake PUT reads this existing file and uploads it directly; no temp copy.
     file_uri = "file://" + local_file.resolve().as_posix()
     file_uri = quote_sql_string(file_uri)
-    # Keep the trailing slash: Snowflake otherwise concatenates the folder\n    # and uploaded filename (e.g. sessionsjpl_sessions_cleaned.csv).\n    stage_path = f"{STAGE}/{stage_folder.strip(chr(47))}/"
+    # Keep the trailing slash: Snowflake otherwise concatenates the folder\n    # and uploaded filename (e.g. sessionsjpl_sessions_cleaned.csv).\n    stage_path = f"{STAGE}/{stage_folder}/"
 
     with connection.cursor() as cursor:
         cursor.execute(
