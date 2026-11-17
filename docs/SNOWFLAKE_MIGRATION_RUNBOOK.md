@@ -102,17 +102,16 @@ This loads API sessions, userInputs and the session mapping, then creates the co
 After checking the Snowsight credit balance, load the full Static source and build Power marts:
 
 ~~~powershell
-python scripts/deploy_snowflake.py --include-static
+python scripts/deploy_snowflake.py --include-static --skip-core-load
 ~~~
 
 The Static file is uploaded directly from its existing local path to the Snowflake internal stage; AUTO_COMPRESS=FALSE avoids creating an extra compressed copy. If the compressed file is larger than 250 MiB, the loader prints a performance warning. Snowflake PUT can upload larger files in chunks, but COPY throughput is generally better with multiple 100–250 MiB compressed files. The current loader proceeds with the existing file and does not create local split copies.
 
-The command performs:
-1. Bootstrap database and warehouse.
-2. Upload + COPY API sessions.
-3. Upload + COPY userInputs.
-4. Upload + COPY session mapping.
-5. Optional upload + COPY full Static measurements.
+The second command uses --skip-core-load so it does not truncate/reload the API sessions, userInputs or mapping tables from the first run. The command performs:
+1. Bootstrap database and warehouse (idempotent).
+2. Preserve API sessions, userInputs and session mapping from the first run.
+3. Upload + COPY full Static measurements.
+4. Rebuild dimensions/facts/views and Power marts.
 6. Create dimensions/facts/views.
 7. Optional heavy Power mart build.
 8. Run validation queries.
