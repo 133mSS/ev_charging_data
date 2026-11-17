@@ -22,6 +22,18 @@ Trang ACN-Data mô tả JPL có 50 EVSE và chỉ phục vụ nhân viên. Đây
 
 Mỗi kết luận phải đi kèm số phiên hoặc số mẫu hỗ trợ. Không biến công suất quan sát thành phụ tải toàn site nếu độ bao phủ không đầy đủ.
 
+### Ánh xạ câu hỏi vào dashboard
+
+| Câu hỏi | Phần trả lời trong dashboard chính |
+|---|---|
+| Q1 — Nhu cầu sạc theo giờ và ngày trong tuần | Mục Q1: số phiên theo giờ bắt đầu, heatmap thứ × giờ và so sánh số phiên/kWh trung bình mỗi ngày thường với cuối tuần |
+| Q2 — Khác biệt mức sử dụng giữa EVSE | Mục Q2: xếp hạng số phiên, kWh, tỷ trọng năng lượng và xu hướng theo tháng |
+| Q3 — Thời lượng kết nối và thời gian sau mốc dòng sạc cuối | Mục Q3a và Q3b: phân nhóm thời lượng, phân bố khoảng kết nối sau doneChargingTime |
+| Q4 — Năng lượng yêu cầu và thực nhận | Mục Q4: scatter kWhRequested–kWhDelivered, tỷ lệ và độ bao phủ userInputs |
+| Q5 — Power và độ bao phủ | Mục Q5 trong dashboard chính (Static đã ghép); dashboard Power bổ trợ kiểm toán toàn bộ Static, kể cả STATIC_ONLY |
+
+Xu hướng tiêu thụ theo tháng là phần bối cảnh bổ sung. **Dashboard phân tích chính là dashboard/app.py; dashboard/power_analytics.py chỉ là trang kiểm toán chuyên sâu cho Q5.**
+
 ## 3. Nguồn dữ liệu thật
 
 | Nguồn | Nội dung | Trạng thái |
@@ -93,6 +105,13 @@ python run_pipeline.py --stage load
 streamlit run dashboard/app.py
 ```
 
+
+Đây là dashboard chính trả lời Q1–Q5. Trang kiểm toán Power/coverage bổ trợ chạy riêng sau khi audit CSV đã được tạo:
+
+```powershell
+streamlit run dashboard/power_analytics.py
+```
+
 ## 5. Kiểm soát dữ liệu và diễn giải
 
 - Không dùng dữ liệu Office 001 trong phân tích JPL. Folder `data/processed/jpl/` tách riêng mọi đầu ra.
@@ -107,17 +126,166 @@ streamlit run dashboard/app.py
 
 ## 6. Trạng thái triển khai
 
-- [x] Xác nhận site ID và endpoint API chính thức.
-- [x] Kiểm kê Git tree JPL Static: 27.723 file; 52 filename station IDs; 2018-10-08–2020-12-02; 616,187,585 bytes nén.
-- [x] Thay các đường dẫn và kiểm tra số lượng cố định của Office bằng cấu hình JPL.
-- [ ] Tải API bằng API token trên máy chạy project.
-- [ ] Tải 27.723 file static JPL và chạy transform/matching.
-- [ ] Chốt số phiên API, tỷ lệ ghép, số mẫu, coverage và quality sau khi có dữ liệu thực.
-- [x] Thêm truy vấn và biểu đồ heatmap nhu cầu theo thứ × giờ (chờ dữ liệu JPL để kiểm chứng đầu ra).
-- [ ] Hoàn thiện load profile, mức đồng thời và nhận định dashboard theo kết quả JPL đã xác minh.
+- [x] Xác nhận site ID JPL và endpoint ACN-Data API.
+- [x] Tải/refresh API snapshot: 33.638 session IDs duy nhất.
+- [x] Kiểm kê Static JPL: 27.723 file CSV.GZ; 52 station IDs lịch sử; 2018-10-08 đến 2020-12-02.
+- [x] Transform toàn bộ Static: 175.390.901 measurement rows.
+- [x] Đối chiếu API–Static: 25.647 MATCHED, 1.978 STATIC_ONLY, 7.991 API_ONLY.
+- [x] Audit Power trên toàn bộ Static cho Jul–Nov 2020: 14.427.675 rows, 50 station IDs có quan sát, row-level Power coverage 100%.
+- [x] Phân loại 32 station IDs có quan sát đủ 5 tháng, 18 trạm có dữ liệu gián đoạn và 2 trạm không có quan sát trong cửa sổ.
+- [x] Thêm temporal audit có full UTC-hour grid, kể cả giờ không có quan sát.
+- [x] Thêm script đối chiếu API–Static theo station-hour và dashboard Power đọc từ full-Static outputs.
+- [x] Thêm unit tests và GitHub Actions.
+- [ ] Chạy API–Static hourly alignment trên bộ dữ liệu local sau khi pull nhánh mới.
+- [ ] Rerun temporal audit để tái tạo site-hour CSV theo full-grid mới.
+- [ ] Xác minh dashboard Power trong môi trường Windows và chụp ảnh minh chứng.
+- [ ] Hoàn thiện/kiểm tra phần load aggregate Power vào PostgreSQL nếu cần dùng cho bản dashboard database.
 
 ## 7. Tham khảo
 
 - ACN-Data dataset/API: https://ev.caltech.edu/dataset.html
 - ACN-Data Static: https://github.com/tongxin-li/ACN-Data-Static
 - Lee, Z. J., Li, T., & Low, S. H. (2019). *ACN-Data: Analysis and Applications of an Open EV Charging Dataset*, ACM e-Energy '19.
+
+
+## 8. Power analytics and temporal coverage
+
+Power is analyzed separately from the broader API session-history questions because the Static archive has a source retention limitation. The source documentation records that before 2020-06-17, only Charging Current was retained for JPL Arroyo Garage 01; Voltage and Power are not uniformly available in that earlier period. The full-Static audit found 40.44% row-level Power coverage in June 2020 and 100% in the available Static rows from July through November 2020. The Static archive ends on 2020-12-02, so December is partial.
+
+Use July–November 2020 as the Power comparison window. This does not limit API session, energy, connection-duration, or demand analyses to those five months.
+
+### Full-Static temporal audit
+
+Run against all 50 station IDs with observations in the selected window, not only the 32-station balanced comparison cohort:
+
+~~~powershell
+python scripts/audit_jpl_temporal_coverage.py --start-month 2020-07 --end-month 2020-11 --all-stations --chunksize 500000
+~~~
+
+The audit scans the full cleaned Static dataset. It writes station-hour, station-month, hour-of-day, site-hour and summary outputs under data/analytics/jpl_power_temporal/.
+
+Important: the site-hour output is a complete UTC-hour grid (3,673 hours for July–November 2020), including hours with no observations. This prevents coverage percentages from using only hours where some EVSE happened to report. Missing Power remains missing and is never filled with 0.
+
+### API–Static hourly alignment
+
+After the API/Static transform has generated the session mapping, run:
+
+~~~powershell
+python scripts/audit_jpl_api_static_hourly_alignment.py --start-month 2020-07 --end-month 2020-11 --chunksize 500000
+~~~
+
+This expands API connection intervals into UTC-hour buckets and compares them with Static samples from the full cleaned Static file. Outputs are written under data/analytics/jpl_api_static_alignment/.
+
+### One-command run
+
+After the API/Static transforms are complete, this PowerShell command runs unit tests, the full-Static temporal audit and API–Static hourly alignment in order:
+
+~~~powershell
+.\scripts\run_jpl_power_analytics.ps1
+~~~
+
+Add -LaunchDashboard to launch the CSV-driven Power dashboard after the analytics steps finish. Use -ChunkSize 250000 on a lower-memory machine.
+
+### Power dashboard
+
+~~~powershell
+streamlit run dashboard/power_analytics.py
+~~~
+
+The Power dashboard reads the full-Static CSV audit outputs. The primary dashboard remains available with streamlit run dashboard/app.py.
+
+### Balanced comparison cohort
+
+To regenerate the 32-station subset with observations in all five months and a minimum monthly row-level Power coverage:
+
+~~~powershell
+python scripts/select_jpl_power_analysis_scope.py --min-monthly-power-coverage 99
+~~~
+
+Use this cohort for like-for-like month comparisons only. Do not discard the other 18 stations with intermittent observations from descriptive analysis. Two additional historical station IDs have no observation in the selected five-month window.
+
+### Interpretation
+
+- Calendar-hour observation presence is not EVSE uptime. Static records are per-session traces, not continuous 24/7 telemetry.
+- Power row coverage measures non-null Power among records that exist; it does not prove continuous temporal coverage.
+- A station-hour mean is an average of samples within one station-hour.
+- The sum of station-hour means is not a synchronized facility load because observations from different EVSEs do not necessarily share timestamps.
+- API session minutes are session-minutes and can overlap; they are not unique occupied wall-clock minutes.
+- For definitions, results, evidence screenshots and the full runbook, see docs/JPL_POWER_ANALYTICS_FINAL.md.
+
+
+## 9. Snowflake cloud deployment (new)
+
+The repository now includes a Snowflake-first deployment package. It retains the local PostgreSQL implementation as a reference/fallback and does not delete or overwrite local source data.
+
+### Target architecture
+
+- **Snowflake RAW:** internal stage plus typed landing tables for API sessions, userInputs, Static measurements and session mapping.
+- **Snowflake WAREHOUSE:** station/date/time dimensions, API session facts, user-request facts and a view over all Static measurements. The Static object is a view over the RAW table to avoid a second physical copy of the 175M-row dataset.
+- **Snowflake MART:** last-positive-current timing, station-hour Power, station-month coverage, full UTC site-hour calendar and hour-of-day profile.
+- **Snowflake Streamlit:** one dashboard using the active Snowpark session, with Q1–Q5 analysis.
+- **GitHub:** remains the source-code/version-control system.
+
+### Deployment assets
+
+- snowflake/00_bootstrap.sql
+- snowflake/01_raw_staging.sql
+- snowflake/02_warehouse.sql
+- snowflake/03_power_marts.sql
+- snowflake/04_validation.sql
+- snowflake/streamlit_app.py
+- snowflake/environment.yml
+- scripts/deploy_snowflake.py
+- requirements-snowflake.txt
+- docs/SNOWFLAKE_MIGRATION_RUNBOOK.md
+- docs/SNOWFLAKE_MIGRATION_REPORT_DRAFT.md
+
+### Credentials
+
+Install the optional Snowflake connector:
+
+~~~powershell
+.\scripts\run_snowflake_deploy.ps1
+~~~
+
+Add these values to a local .env file (never commit the real .env):
+
+~~~dotenv
+SNOWFLAKE_ACCOUNT=<your-account-identifier>
+SNOWFLAKE_USER=<your-user>
+SNOWFLAKE_PASSWORD=<your-password>
+SNOWFLAKE_ROLE=<optional-role>
+SNOWFLAKE_WAREHOUSE=JPL_ETL_WH
+~~~
+
+The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source. The Windows wrapper installs the Snowflake client in %LOCALAPPDATA% and directs temporary files to the system drive, not the nearly-full project drive.
+
+### Two-step deployment
+
+First deploy the smaller API inputs, create the warehouse objects and publish the dashboard shell:
+
+~~~powershell
+.\scripts\run_snowflake_deploy.ps1
+~~~
+
+This does **not** load the 175M-row Static file. Q1–Q4 can be validated after the API data loads; Q5 remains unpopulated until Static is loaded.
+
+Before using the remaining Snowflake trial credits, check the current Snowsight credit balance. Then opt in to the large Static upload and Power marts without reloading the API tables:
+
+~~~powershell
+.\scripts\run_snowflake_deploy.ps1 -IncludeStatic -SkipCoreLoad
+~~~
+
+The loader uploads the existing processed files directly to the Snowflake internal stage (PUT) and loads them with COPY INTO; it does not create an additional local data copy. It checks that the single compressed Static file is within the configured per-file load limit. If the check stops, split the compressed input safely before retrying; do not bypass the guard.
+
+The bootstrap creates an X-Small warehouse with 60-second auto-suspend. Monitor trial credit consumption and stop the warehouse when not in use. A Snowflake trial is time-limited and is not a permanent free hosting plan.
+
+### Validation
+
+Run snowflake/04_validation.sql in Snowsight or inspect its output from the deployment script. Confirm API/userInputs/Static row counts, MATCHED vs STATIC_ONLY session counts and the Q5 site-hour calendar. The July–November Power window should contain 3,673 elapsed UTC hours, but actual row counts/observation presence must be read from the live Snowflake load, not copied from local logs.
+
+### Launch and account-side status
+
+The deploy script creates JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD and publishes a live Streamlit version. Open the Streamlit object from Snowsight.
+
+**Implementation status:** deployment SQL, loader, app and report/runbook assets are committed to this branch. The user's Snowflake account has not yet been connected or loaded by this repository change. Do not report the Snowflake warehouse/dashboard as operational until the account-side deployment, row-count reconciliation and dashboard screenshots have been completed.

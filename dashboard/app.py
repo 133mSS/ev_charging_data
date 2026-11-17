@@ -228,6 +228,7 @@ def read_sql_file(filename: str) -> str:
 
 MONTHLY_STATION_SQL = read_sql_file("21_monthly_station_trend.sql")
 WEEKDAY_HEATMAP_SQL = read_sql_file("25_weekday_hour_heatmap.sql")
+WEEKDAY_WEEKEND_SQL = read_sql_file("26_weekday_weekend_daily_average.sql")
 STATION_RANKING_SQL = read_sql_file("22_station_usage_ranking.sql")
 POST_CHARGE_SQL = read_sql_file("23_post_charge_connection_time.sql")
 REQUEST_COMPARISON_SQL = read_sql_file("24_requested_vs_delivered.sql")
@@ -240,6 +241,15 @@ def render_dashboard() -> None:
         "Nguồn dữ liệu: ACN-Data (site JPL, Arroyo Garage 01). Phân tích theo thời gian: "
         "xu hướng tiêu thụ điện, thời điểm bắt đầu sạc, công suất quan sát được, "
         "thời lượng kết nối, mức sử dụng theo trạm và chênh lệch giữa yêu cầu với điện năng thực nhận."
+    )
+
+    st.info(
+        "**Đây là dashboard phân tích chính, được tổ chức theo 5 câu hỏi nghiên cứu.** "
+        "Q1: thời điểm/ngày bắt đầu sạc (mục 02); "
+        "Q2: khác biệt mức sử dụng giữa EVSE (mục 05); "
+        "Q3: thời lượng kết nối và khoảng thời gian sau mốc dòng sạc cuối (mục 04 và 06); "
+        "Q4: năng lượng yêu cầu so với thực nhận (mục 07); "
+        "Q5: Power và độ bao phủ (mục 03; xem dashboard Power bổ trợ để kiểm toán toàn bộ Static)."
     )
 
     try:
@@ -299,6 +309,8 @@ def render_dashboard() -> None:
     try:
         hourly = read_query(START_HOUR_SQL, query_params)
         weekday_heatmap = read_query(WEEKDAY_HEATMAP_SQL, query_params)
+
+        weekday_weekend = read_query(WEEKDAY_WEEKEND_SQL, query_params)
 
         power_params = {
             **query_params,
@@ -436,7 +448,7 @@ def render_dashboard() -> None:
     )
 
     # 01. Monthly consumption
-    st.header("01. Xu hướng tiêu thụ điện theo tháng")
+    st.header("Bổ sung. Xu hướng tiêu thụ điện theo tháng")
     left, right = st.columns(2)
 
     with left:
@@ -473,7 +485,7 @@ def render_dashboard() -> None:
     )
 
     # 02. Session start time
-    st.header("02. Người dùng thường bắt đầu sạc lúc nào?")
+    st.header("Q1. Nhu cầu sạc tập trung vào ngày nào và khung giờ nào?")
     left, right = st.columns(2)
     hour_ticks = list(range(24))
     hour_text = [f"{hour:02d}:00" for hour in hour_ticks]
@@ -525,16 +537,68 @@ def render_dashboard() -> None:
         "nó không đo số cổng đang bận đồng thời."
     )
 
+    st.subheader("So sánh ngày thường và cuối tuần")
+    weekday_left, weekday_right = st.columns(2)
+
+    with weekday_left:
+        fig = px.line(
+            weekday_weekend,
+            x="local_hour",
+            y="avg_sessions_per_day",
+            color="day_type",
+            markers=True,
+            title="Số phiên bắt đầu trung bình mỗi ngày",
+            labels={
+                "local_hour": "Giờ bắt đầu (Los Angeles)",
+                "avg_sessions_per_day": "Phiên/ngày",
+                "day_type": "Nhóm ngày",
+            },
+        )
+        fig.update_xaxes(
+            range=[-0.5, 23.5],
+            tickmode="array",
+            tickvals=hour_ticks,
+            ticktext=hour_text,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    with weekday_right:
+        fig = px.line(
+            weekday_weekend,
+            x="local_hour",
+            y="avg_start_hour_energy_kwh_per_day",
+            color="day_type",
+            markers=True,
+            title="Điện năng gắn với phiên bắt đầu trung bình mỗi ngày",
+            labels={
+                "local_hour": "Giờ bắt đầu (Los Angeles)",
+                "avg_start_hour_energy_kwh_per_day": "kWh/ngày",
+                "day_type": "Nhóm ngày",
+            },
+        )
+        fig.update_xaxes(
+            range=[-0.5, 23.5],
+            tickmode="array",
+            tickvals=hour_ticks,
+            ticktext=hour_text,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    st.caption(
+        "Số phiên và kWh được chia cho tổng số ngày lịch trong từng nhóm ngày thường/cuối tuần. "
+        "kWh được gán theo giờ bắt đầu phiên, không phải điện năng đo riêng trong giờ đó."
+    )
+
     # 03. Power + coverage
-    st.header("03. Công suất đo được và độ bao phủ dữ liệu")
+    st.header("Q5. Công suất quan sát và số EVSE có dữ liệu thay đổi thế nào trong ngày?")
     left, right = st.columns(2)
 
     if selected_station is None:
-        power_title = "Tổng công suất quan sát được theo giờ"
-        power_caption = "Tổng công suất là tổng trung bình từng trạm trong mỗi phút có dữ liệu; trạm thiếu bản ghi không được giả định bằng 0."
+        power_title = "Tổng các trung bình station-minute có quan sát theo giờ"
+        power_caption = "Chỉ số này cộng trung bình theo trạm trong từng phút có dữ liệu; không phải phụ tải đồng thời/toàn cơ sở vì mẫu giữa các EVSE không được chứng minh là đồng bộ."
     else:
-        power_title = f"Công suất quan sát tại trạm {selected_station} theo giờ"
-        power_caption = f"Công suất chỉ hiển thị các phút có bản ghi của trạm {selected_station}; đường độ bao phủ vẫn tính trên toàn bộ các trạm."
+        power_title = f"Trung bình công suất station-minute tại trạm {selected_station} theo giờ"
+        power_caption = f"Công suất chỉ hiển thị các phút có bản ghi của trạm {selected_station}; đây là trung bình mẫu, không phải đường công suất liên tục."
 
     power_plot = power[
         ["local_hour", "avg_observed_power_kw", "p95_observed_power_kw"]
@@ -571,6 +635,11 @@ def render_dashboard() -> None:
         st.plotly_chart(fig, width="stretch")
 
     st.caption(power_caption)
+    st.info(
+        "Power trong trang này được lấy từ fact_static_measurements đã ghép API–Static. "
+        "Để xem audit trên toàn bộ Static (bao gồm STATIC_ONLY), độ bao phủ đầy đủ 50 EVSE "
+        "và các giờ không có quan sát, chạy riêng: streamlit run dashboard/power_analytics.py."
+    )
     st.subheader("Bảng kiểm tra độ bao phủ")
     coverage_display = power[
         [
@@ -598,7 +667,7 @@ def render_dashboard() -> None:
     )
 
     # 04. Connection duration analysis
-    st.header("04. Mối liên hệ giữa thời lượng kết nối và năng lượng")
+    st.header("Q3a. Thời lượng kết nối liên quan thế nào đến điện năng nhận được?")
 
     if duration.empty:
         st.info("Không có dữ liệu thời lượng kết nối trong khoảng đã chọn.")
@@ -680,7 +749,7 @@ def render_dashboard() -> None:
             "kết nối, không phải công suất sạc thực đo."
         )
     # 05. Station-level ranking and monthly trend.
-    st.header("05. Trạm nào đang ghi nhận mức sử dụng cao nhất?")
+    st.header("Q2. Mức độ sử dụng ghi nhận khác nhau thế nào giữa các EVSE?")
     st.caption(
         "So sánh cả số phiên và tổng điện năng. Không dùng các chỉ số này để gọi là "
         "tỷ lệ khai thác công suất trạm, vì bộ dữ liệu không cung cấp mẫu số về thời gian "
@@ -859,7 +928,7 @@ def render_dashboard() -> None:
         )
 
     # 06. Connection retained after the last non-zero current measurement.
-    st.header("06. Xe còn kết nối bao lâu sau khi ngừng ghi nhận dòng sạc?")
+    st.header("Q3b. Xe còn kết nối bao lâu sau lần cuối ghi nhận dòng sạc khác 0?")
     st.write(
         "Chỉ số này được tính bằng thời điểm ngắt kết nối trừ thời điểm cuối cùng ghi nhận "
         "dòng điện khác 0 (`doneChargingTime`). Nó giúp nhận diện những phiên mà xe vẫn "
@@ -956,7 +1025,7 @@ def render_dashboard() -> None:
         )
 
     # 07. User request compared with session energy delivered.
-    st.header("07. Năng lượng người dùng yêu cầu và năng lượng thực nhận")
+    st.header("Q4. Năng lượng thực nhận so với yêu cầu cuối cùng được ghi nhận ra sao?")
     st.write(
         "Mỗi phiên có thể có nhiều lần cập nhật `userInputs`. Phân tích chọn bản ghi có "
         "`modified_at` mới nhất cho từng phiên, sau đó so sánh `kWhRequested` với `kWhDelivered` "

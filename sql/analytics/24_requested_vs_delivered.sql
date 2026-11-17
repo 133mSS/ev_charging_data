@@ -11,7 +11,6 @@ WITH latest_request AS (
         r.minutes_available,
         r.requested_departure
     FROM warehouse.fact_user_requests r
-    WHERE r.kwh_requested > 0
     ORDER BY
         r.session_id,
         r.modified_at DESC,
@@ -41,4 +40,5 @@ JOIN warehouse.dim_date d
     ON d.date_key = f.date_key
 WHERE d.full_date >= CAST(:start_date AS DATE)
   AND d.full_date < CAST(:end_date_exclusive AS DATE)
+  AND lr.kwh_requested > 0
 ORDER BY f.energy_kwh / NULLIF(lr.kwh_requested, 0);
