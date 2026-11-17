@@ -87,6 +87,15 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertNotIn('"database"', connection_kwargs)
         self.assertIn('run_sql_file(connection, "snowflake/00_bootstrap.sql")', script)
 
+    def test_windows_wrapper_keeps_environment_and_temp_files_off_project_drive(self):
+        script = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn("$env:LOCALAPPDATA", script)
+        self.assertIn("$env:TEMP", script)
+        self.assertIn("$env:TMP", script)
+        self.assertIn("requirements-snowflake.txt", script)
+        self.assertIn("--include-static", script)
+        self.assertIn("--skip-core-load", script)
+
     def test_large_static_load_is_explicit_opt_in(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('"--include-static"', script)
