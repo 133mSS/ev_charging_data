@@ -108,11 +108,13 @@ def upload_and_copy(
             f"Required processed JPL file not found: {local_file}"
         )
     size = local_file.stat().st_size
-    if size > 5 * 1024**3:
-        raise RuntimeError(
-            f"{local_file.name} is larger than Snowflake's 5 GB per-file load limit. "
-            "Split the compressed CSV into smaller gzip parts before upload; "
-            "do not try to upload this file as one object."
+    if size > 250 * 1024**2:
+        print(
+            f"WARNING: {local_file.name} is {size / 1024**2:,.1f} MiB compressed. "
+            "Snowflake PUT can upload large files in chunks, but COPY load parallelism "
+            "is generally better with multiple 100–250 MiB compressed files. "
+            "This script will proceed without creating a local duplicate.",
+            flush=True,
         )
 
     print(
