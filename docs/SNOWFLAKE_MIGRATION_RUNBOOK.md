@@ -85,16 +85,12 @@ Use a role with privileges to create databases, schemas, warehouses, stages, tab
 
 First check available free space and make sure the current processed files already exist. The deploy script uploads the existing compressed files; it does not create another local copy.
 
-Install only the optional connector dependency:
-
-~~~powershell
-python -m pip install -r requirements-snowflake.txt
-~~~
+The local deployment wrapper creates its own Python virtual environment under %LOCALAPPDATA% (normally on C:) and routes temporary files there, avoiding the nearly-full D: project drive. It installs Snowflake Connector 5.2+, which supports the Python 3.15 interpreter shown in the development environment.
 
 For a low-risk first pass, deploy the database objects and API session inputs without the 175M-row Static load:
 
 ~~~powershell
-python scripts/deploy_snowflake.py
+.\scripts\run_snowflake_deploy.ps1
 ~~~
 
 This loads API sessions, userInputs and the session mapping, then creates the core warehouse and the Streamlit app. Q1–Q4 can be checked; Q5 requires the Static load and Power marts.
@@ -102,7 +98,7 @@ This loads API sessions, userInputs and the session mapping, then creates the co
 After checking the Snowsight credit balance, load the full Static source and build Power marts:
 
 ~~~powershell
-python scripts/deploy_snowflake.py --include-static --skip-core-load
+.\scripts\run_snowflake_deploy.ps1 -IncludeStatic -SkipCoreLoad
 ~~~
 
 The Static file is uploaded directly from its existing local path to the Snowflake internal stage; AUTO_COMPRESS=FALSE avoids creating an extra compressed copy. If the compressed file is larger than 250 MiB, the loader prints a performance warning. Snowflake PUT can upload larger files in chunks, but COPY throughput is generally better with multiple 100–250 MiB compressed files. The current loader proceeds with the existing file and does not create local split copies.
