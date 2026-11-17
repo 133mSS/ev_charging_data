@@ -78,6 +78,11 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("COPY INTO", script)
         self.assertNotIn("password = '", script.lower())
 
+    def test_sql_runner_calls_execute_string_on_connection_not_cursor(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn("connection.execute_string(", script)
+        self.assertNotIn("cursor.execute_string(", script)
+
     def test_first_login_does_not_require_database_or_warehouse_to_exist(self):
         script = read("scripts/deploy_snowflake.py")
         start = script.index("    kwargs = {")
