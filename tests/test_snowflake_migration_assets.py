@@ -132,7 +132,11 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
 
     def test_put_and_copy_stage_directories_end_with_slash(self):
         script = read("scripts/deploy_snowflake.py")
-        self.assertIn('stage_path = f"{STAGE}/{stage_folder}/"', script)
+        self.assertIn('return f"{STAGE}/{folder}/"', script)
+        start = script.index("def upload_and_copy(")
+        assignment = script.index("stage_path = build_stage_directory(stage_folder)", start)
+        put = script.index('f"PUT \'{file_uri}\' {stage_path} "', start)
+        self.assertLess(assignment, put)
         self.assertIn('stage_path = f"{STAGE}/app/"', script)
 
     def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
