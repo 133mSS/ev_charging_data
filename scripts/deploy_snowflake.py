@@ -58,13 +58,12 @@ def get_connection():
             "Missing Snowflake credentials in .env: " + ", ".join(missing)
         )
 
+    # Do not select a database or warehouse at login: on first deployment
+    # neither object exists yet. The bootstrap SQL creates them before USE.
     kwargs = {
         "account": os.environ["SNOWFLAKE_ACCOUNT"],
         "user": os.environ["SNOWFLAKE_USER"],
         "password": os.environ["SNOWFLAKE_PASSWORD"],
-        "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH"),
-        "database": DATABASE,
-        "schema": "RAW",
         "login_timeout": 30,
         "network_timeout": 300,
     }
@@ -226,8 +225,7 @@ def main() -> None:
 
     connection = get_connection()
     try:
-        with connection.cursor() as cursor:
-            cursor.execute(f"USE WAREHOUSE {WAREHOUSE}")
+        # Creates the database and warehouse, then selects both in the SQL file.
         run_sql_file(connection, "snowflake/00_bootstrap.sql")
         run_sql_file(connection, "snowflake/01_raw_staging.sql")
 
