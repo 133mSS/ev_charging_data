@@ -6,14 +6,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $env:LOCALAPPDATA) {
+    throw "LOCALAPPDATA is not defined. Create a Python environment on a drive with free space."
+}
+
 $ClientRoot = Join-Path $env:LOCALAPPDATA "JPL-Snowflake-Client"
 $VenvPath = Join-Path $ClientRoot "venv"
 $TempPath = Join-Path $ClientRoot "temp"
 $PythonExe = Join-Path $VenvPath "Scripts\python.exe"
-
-if (-not $env:LOCALAPPDATA) {
-    throw "LOCALAPPDATA is not defined. Create a Python environment on a drive with free space."
-}
 
 New-Item -ItemType Directory -Path $ClientRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $TempPath -Force | Out-Null
