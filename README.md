@@ -265,6 +265,15 @@ Use the account identifier from Snowsight > account selector > View account deta
 
 ### Two-step deployment
 
+Before creating cloud objects, verify login with a read-only connection test:
+
+~~~powershell
+$py = "$env:LOCALAPPDATA\\JPL-Snowflake-Client\\venv\\Scripts\\python.exe"
+& $py .\\scripts\\test_snowflake_connection.py
+~~~
+
+For a managed Google OIDC login, set `SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE` in `.env`. Use `externalbrowser` only for a SAML 2.0 IdP.
+
 First deploy the smaller API inputs, create the warehouse objects and publish the dashboard shell:
 
 ~~~powershell
