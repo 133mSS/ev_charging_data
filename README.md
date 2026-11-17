@@ -22,6 +22,18 @@ Trang ACN-Data mô tả JPL có 50 EVSE và chỉ phục vụ nhân viên. Đây
 
 Mỗi kết luận phải đi kèm số phiên hoặc số mẫu hỗ trợ. Không biến công suất quan sát thành phụ tải toàn site nếu độ bao phủ không đầy đủ.
 
+### Ánh xạ câu hỏi vào dashboard
+
+| Câu hỏi | Phần trả lời trong dashboard chính |
+|---|---|
+| Q1 — Nhu cầu sạc theo giờ và ngày trong tuần | Mục Q1: số phiên theo giờ bắt đầu và heatmap thứ × giờ |
+| Q2 — Khác biệt mức sử dụng giữa EVSE | Mục Q2: xếp hạng số phiên, kWh, tỷ trọng năng lượng và xu hướng theo tháng |
+| Q3 — Thời lượng kết nối và thời gian sau mốc dòng sạc cuối | Mục Q3a và Q3b: phân nhóm thời lượng, phân bố khoảng kết nối sau doneChargingTime |
+| Q4 — Năng lượng yêu cầu và thực nhận | Mục Q4: scatter kWhRequested–kWhDelivered, tỷ lệ và độ bao phủ userInputs |
+| Q5 — Power và độ bao phủ | Mục Q5 trong dashboard chính (Static đã ghép); dashboard Power bổ trợ kiểm toán toàn bộ Static, kể cả STATIC_ONLY |
+
+Xu hướng tiêu thụ theo tháng là phần bối cảnh bổ sung. **Dashboard phân tích chính là dashboard/app.py; dashboard/power_analytics.py chỉ là trang kiểm toán chuyên sâu cho Q5.**
+
 ## 3. Nguồn dữ liệu thật
 
 | Nguồn | Nội dung | Trạng thái |
@@ -91,6 +103,13 @@ python run_pipeline.py --stage load
 
 ```powershell
 streamlit run dashboard/app.py
+```
+
+
+Đây là dashboard chính trả lời Q1–Q5. Trang kiểm toán Power/coverage bổ trợ chạy riêng sau khi audit CSV đã được tạo:
+
+```powershell
+streamlit run dashboard/power_analytics.py
 ```
 
 ## 5. Kiểm soát dữ liệu và diễn giải
