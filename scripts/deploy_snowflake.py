@@ -33,6 +33,8 @@ from project_config import (  # noqa: E402
     SESSION_MAPPING_FILE,
 )
 
+# Load local deployment credentials/config before reading optional warehouse name.
+load_dotenv(ROOT / ".env")
 
 DATABASE = "JPL_ANALYTICS"
 WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
