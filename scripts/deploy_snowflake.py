@@ -78,18 +78,19 @@ def run_sql_file(connection, relative_path: str) -> None:
     if not path.exists():
         raise FileNotFoundError(path)
     print(f"\n===== APPLY {relative_path} =====", flush=True)
-    with connection.cursor() as cursor:
-        for result_cursor in cursor.execute_string(
-            path.read_text(encoding="utf-8"),
-            return_cursors=True,
-        ):
-            try:
-                if result_cursor.description:
-                    rows = result_cursor.fetchall()
-                    for row in rows[:10]:
-                        print(row)
-            finally:
-                result_cursor.close()
+    # execute_string is a Connection method in snowflake-connector-python.
+    # It returns one Cursor per statement when return_cursors=True.
+    for result_cursor in connection.execute_string(
+        path.read_text(encoding="utf-8"),
+        return_cursors=True,
+    ):
+        try:
+            if result_cursor.description:
+                rows = result_cursor.fetchall()
+                for row in rows[:10]:
+                    print(row)
+        finally:
+            result_cursor.close()
 
 
 def quote_sql_string(value: str) -> str:
