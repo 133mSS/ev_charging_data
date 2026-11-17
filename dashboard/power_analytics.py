@@ -129,6 +129,13 @@ st.caption(
     "và đối chiếu phiên sạc từ ACN-Data API."
 )
 
+st.info(
+    "**Đây là dashboard kỹ thuật bổ trợ cho câu hỏi Q5 (Power & Data Coverage), không phải dashboard nghiên cứu chính.** "
+    "Để xem các phân tích trả lời Q1–Q5, chạy: "
+    "`streamlit run dashboard/app.py`. "
+    "Trang này tập trung kiểm toán toàn bộ Static và kiểm tra độ bao phủ phép đo."
+)
+
 try:
     summary, station_hour, station_month, site_hour, hour_profile = load_power_outputs()
 except Exception as exc:
