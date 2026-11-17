@@ -228,6 +228,7 @@ def read_sql_file(filename: str) -> str:
 
 MONTHLY_STATION_SQL = read_sql_file("21_monthly_station_trend.sql")
 WEEKDAY_HEATMAP_SQL = read_sql_file("25_weekday_hour_heatmap.sql")
+WEEKDAY_WEEKEND_SQL = read_sql_file("26_weekday_weekend_daily_average.sql")
 STATION_RANKING_SQL = read_sql_file("22_station_usage_ranking.sql")
 POST_CHARGE_SQL = read_sql_file("23_post_charge_connection_time.sql")
 REQUEST_COMPARISON_SQL = read_sql_file("24_requested_vs_delivered.sql")
@@ -308,6 +309,8 @@ def render_dashboard() -> None:
     try:
         hourly = read_query(START_HOUR_SQL, query_params)
         weekday_heatmap = read_query(WEEKDAY_HEATMAP_SQL, query_params)
+
+        weekday_weekend = read_query(WEEKDAY_WEEKEND_SQL, query_params)
 
         power_params = {
             **query_params,
@@ -532,6 +535,58 @@ def render_dashboard() -> None:
     st.caption(
         "Mỗi ô là số phiên bắt đầu trong một thứ/giờ. Heatmap cho biết thời điểm nhu cầu tập trung; "
         "nó không đo số cổng đang bận đồng thời."
+    )
+
+    st.subheader("So sánh ngày thường và cuối tuần")
+    weekday_left, weekday_right = st.columns(2)
+
+    with weekday_left:
+        fig = px.line(
+            weekday_weekend,
+            x="local_hour",
+            y="avg_sessions_per_day",
+            color="day_type",
+            markers=True,
+            title="Số phiên bắt đầu trung bình mỗi ngày",
+            labels={
+                "local_hour": "Giờ bắt đầu (Los Angeles)",
+                "avg_sessions_per_day": "Phiên/ngày",
+                "day_type": "Nhóm ngày",
+            },
+        )
+        fig.update_xaxes(
+            range=[-0.5, 23.5],
+            tickmode="array",
+            tickvals=hour_ticks,
+            ticktext=hour_text,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    with weekday_right:
+        fig = px.line(
+            weekday_weekend,
+            x="local_hour",
+            y="avg_start_hour_energy_kwh_per_day",
+            color="day_type",
+            markers=True,
+            title="Điện năng gắn với phiên bắt đầu trung bình mỗi ngày",
+            labels={
+                "local_hour": "Giờ bắt đầu (Los Angeles)",
+                "avg_start_hour_energy_kwh_per_day": "kWh/ngày",
+                "day_type": "Nhóm ngày",
+            },
+        )
+        fig.update_xaxes(
+            range=[-0.5, 23.5],
+            tickmode="array",
+            tickvals=hour_ticks,
+            ticktext=hour_text,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    st.caption(
+        "Số phiên và kWh được chia cho tổng số ngày lịch trong từng nhóm ngày thường/cuối tuần. "
+        "kWh được gán theo giờ bắt đầu phiên, không phải điện năng đo riêng trong giờ đó."
     )
 
     # 03. Power + coverage
