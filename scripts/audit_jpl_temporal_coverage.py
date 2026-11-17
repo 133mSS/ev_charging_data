@@ -112,16 +112,18 @@ def build_hourly_records(
     result = pd.DataFrame(rows, columns=columns)
     if result.empty:
         return result
-    result["avg_power_kw"] = result["power_sum_kw"] / result["power_samples"].replace(0, pd.NA)
-    result["avg_current_a"] = result["current_sum_a"] / result["current_samples"].replace(0, pd.NA)
+    power_denominator = result["power_samples"].where(result["power_samples"].gt(0))
+    current_denominator = result["current_samples"].where(result["current_samples"].gt(0))
+    result["avg_power_kw"] = result["power_sum_kw"] / power_denominator
+    result["avg_current_a"] = result["current_sum_a"] / current_denominator
     result["power_sample_coverage_pct"] = (
         100.0 * result["power_samples"] / result["total_samples"]
     )
     result["positive_power_pct"] = (
-        100.0 * result["positive_power_samples"] / result["power_samples"].replace(0, pd.NA)
+        100.0 * result["positive_power_samples"] / power_denominator
     )
     result["positive_current_pct"] = (
-        100.0 * result["positive_current_samples"] / result["current_samples"].replace(0, pd.NA)
+        100.0 * result["positive_current_samples"] / current_denominator
     )
     return result.sort_values(["station_id", "utc_hour_start"]).reset_index(drop=True)
 
