@@ -123,35 +123,57 @@ streamlit run dashboard/app.py
 - Lee, Z. J., Li, T., & Low, S. H. (2019). *ACN-Data: Analysis and Applications of an Open EV Charging Dataset*, ACM e-Energy '19.
 
 
-## 8. Power analysis scope and temporal coverage
+## 8. Power analytics and temporal coverage
 
-The first full-Static audit identified 32 first-pass EVSE candidates with Static samples and non-null Power measurements in each month from July through November 2020. This first-pass criterion does not establish continuous hourly observation.
+Power is analyzed separately from the broader API session-history questions because the Static archive has a source retention limitation. The source documentation records that before 2020-06-17, only Charging Current was retained for JPL Arroyo Garage 01; Voltage and Power are not uniformly available in that earlier period. The full-Static audit found 40.44% row-level Power coverage in June 2020 and 100% in the available Static rows from July through November 2020. The Static archive ends on 2020-12-02, so December is partial.
 
-Rebuild the reproducible scope using the full-Static station/month coverage output:
+Use July–November 2020 as the Power comparison window. This does not limit API session, energy, connection-duration, or demand analyses to those five months.
 
-\`\`\`powershell
+### Full-Static temporal audit
+
+Run against all 50 station IDs with observations in the selected window, not only the 32-station balanced comparison cohort:
+
+~~~powershell
+python scripts/audit_jpl_temporal_coverage.py --start-month 2020-07 --end-month 2020-11 --all-stations --chunksize 500000
+~~~
+
+The audit scans the full cleaned Static dataset. It writes station-hour, station-month, hour-of-day, site-hour and summary outputs under data/analytics/jpl_power_temporal/.
+
+Important: the site-hour output is a complete UTC-hour grid (3,673 hours for July–November 2020), including hours with no observations. This prevents coverage percentages from using only hours where some EVSE happened to report. Missing Power remains missing and is never filled with 0.
+
+### API–Static hourly alignment
+
+After the API/Static transform has generated the session mapping, run:
+
+~~~powershell
+python scripts/audit_jpl_api_static_hourly_alignment.py --start-month 2020-07 --end-month 2020-11 --chunksize 500000
+~~~
+
+This expands API connection intervals into UTC-hour buckets and compares them with Static samples from the full cleaned Static file. Outputs are written under data/analytics/jpl_api_static_alignment/.
+
+### Power dashboard
+
+~~~powershell
+streamlit run dashboard/power_analytics.py
+~~~
+
+The Power dashboard reads the full-Static CSV audit outputs. The primary dashboard remains available with streamlit run dashboard/app.py.
+
+### Balanced comparison cohort
+
+To regenerate the 32-station subset with observations in all five months and a minimum monthly row-level Power coverage:
+
+~~~powershell
 python scripts/select_jpl_power_analysis_scope.py --min-monthly-power-coverage 99
-\`\`\`
+~~~
 
-The default 99% threshold is evaluated separately in each month. The selected list may therefore contain fewer than the 32 first-pass candidates.
+Use this cohort for like-for-like month comparisons only. Do not discard the other 18 stations with intermittent observations from descriptive analysis. Two additional historical station IDs have no observation in the selected five-month window.
 
-Then audit actual calendar-hour observation and sample density using the full cleaned Static dataset (not the API-matched-only measurements):
+### Interpretation
 
-\`\`\`powershell
-python scripts/audit_jpl_temporal_coverage.py --start-month 2020-07 --end-month 2020-11
-\`\`\`
-
-For a lower-memory run:
-
-\`\`\`powershell
-python scripts/audit_jpl_temporal_coverage.py --chunksize 250000
-\`\`\`
-
-Outputs are written to the folder **data/analytics/jpl_power_temporal/**:
-- jpl_station_hourly_temporal_coverage.csv
-- jpl_station_month_temporal_coverage.csv
-- jpl_station_hour_of_day_profile.csv
-- jpl_site_hourly_observed_load.csv
-- jpl_temporal_coverage_summary.json
-
-**Interpretation:** calendar-hour observation coverage is not EVSE uptime. Site Power is summed only across stations with Power observations in that hour; missing stations are never filled with zero. The current fact_static_measurements table uses API-matched rows only and must not be the sole source for Power analysis because it excludes STATIC_ONLY measurements. See docs/JPL_POWER_TEMPORAL_AUDIT.md for definitions and the Warehouse design decision.
+- Calendar-hour observation presence is not EVSE uptime. Static records are per-session traces, not continuous 24/7 telemetry.
+- Power row coverage measures non-null Power among records that exist; it does not prove continuous temporal coverage.
+- A station-hour mean is an average of samples within one station-hour.
+- The sum of station-hour means is not a synchronized facility load because observations from different EVSEs do not necessarily share timestamps.
+- API session minutes are session-minutes and can overlap; they are not unique occupied wall-clock minutes.
+- For definitions, results, evidence screenshots and the full runbook, see docs/JPL_POWER_ANALYTICS_FINAL.md.
