@@ -114,7 +114,11 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn("CREATE OR REPLACE TEMPORARY TABLE", script)
         self.assertIn("COPY INTO {temp_table}", script)
-        self.assertIn("CREATE OR REPLACE TABLE {DATABASE}.RAW.{target_table}", script)
+        self.assertIn("DELETE FROM {DATABASE}.RAW.{target_table}", script)
+        self.assertIn("INSERT INTO {DATABASE}.RAW.{target_table}", script)
+        self.assertIn('cursor.execute("BEGIN")', script)
+        self.assertIn('cursor.execute("COMMIT")', script)
+        self.assertIn('cursor.execute("ROLLBACK")', script)
         self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
         self.assertIn("loaded <= 0", script)
 
