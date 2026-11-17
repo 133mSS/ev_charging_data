@@ -127,6 +127,14 @@ def quote_sql_string(value: str) -> str:
     return value.replace("'", "''")
 
 
+def build_stage_directory(stage_folder: str) -> str:
+    """Return a Snowflake internal-stage directory URI with an explicit separator."""
+    folder = stage_folder.strip("/")
+    if not folder:
+        raise ValueError("stage_folder must not be empty")
+    return f"{STAGE}/{folder}/"
+
+
 def upload_and_copy(
     connection,
     local_file: Path,
@@ -155,7 +163,7 @@ def upload_and_copy(
     # Snowflake PUT reads this existing file and uploads it directly; no temp copy.
     file_uri = "file://" + local_file.resolve().as_posix()
     file_uri = quote_sql_string(file_uri)
-    # Keep the trailing slash: Snowflake otherwise concatenates the folder\n    # and uploaded filename (e.g. sessionsjpl_sessions_cleaned.csv).\n    stage_path = f"{STAGE}/{stage_folder}/"
+    stage_path = build_stage_directory(stage_folder)
 
     with connection.cursor() as cursor:
         cursor.execute(
