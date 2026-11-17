@@ -245,7 +245,7 @@ def deploy_streamlit_app(connection) -> None:
     if not app_file.exists():
         raise FileNotFoundError(app_file)
     file_uri = quote_sql_string("file://" + app_file.resolve().as_posix())
-    # Directory stage path must end in "/" before PUT and CREATE STREAMLIT.\n    stage_path = f"{STAGE}/app/"
+    stage_path = build_stage_directory("app")
     warehouse = os.getenv("SNOWFLAKE_WAREHOUSE", "JPL_ETL_WH")
     with connection.cursor() as cursor:
         cursor.execute(
