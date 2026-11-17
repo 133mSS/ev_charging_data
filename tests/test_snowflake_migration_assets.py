@@ -56,6 +56,15 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC >= F.CONNECTION_TIME_UTC", view_sql)
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC <= F.DISCONNECT_TIME_UTC", view_sql)
 
+    def test_q5_uses_the_selected_date_range_for_each_power_visual(self):
+        app = read("snowflake/streamlit_app.py")
+        q5 = app[app.index("# Q5"):]
+        self.assertGreaterEqual(
+            q5.count("WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)"),
+            3,
+        )
+        self.assertIn("WHERE LOCAL_DATE >= TO_DATE(?) AND LOCAL_DATE < TO_DATE(?)", q5)
+
     def test_q4_selects_latest_request_before_filtering_positive_kwh(self):
         app = read("snowflake/streamlit_app.py")
         q4 = app[app.index("# Q4"):app.index("# Q5")]
