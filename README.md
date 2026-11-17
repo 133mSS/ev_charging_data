@@ -26,7 +26,7 @@ Mỗi kết luận phải đi kèm số phiên hoặc số mẫu hỗ trợ. Kh�
 
 | Câu hỏi | Phần trả lời trong dashboard chính |
 |---|---|
-| Q1 — Nhu cầu sạc theo giờ và ngày trong tuần | Mục Q1: số phiên theo giờ bắt đầu và heatmap thứ × giờ |
+| Q1 — Nhu cầu sạc theo giờ và ngày trong tuần | Mục Q1: số phiên theo giờ bắt đầu, heatmap thứ × giờ và so sánh số phiên/kWh trung bình mỗi ngày thường với cuối tuần |
 | Q2 — Khác biệt mức sử dụng giữa EVSE | Mục Q2: xếp hạng số phiên, kWh, tỷ trọng năng lượng và xu hướng theo tháng |
 | Q3 — Thời lượng kết nối và thời gian sau mốc dòng sạc cuối | Mục Q3a và Q3b: phân nhóm thời lượng, phân bố khoảng kết nối sau doneChargingTime |
 | Q4 — Năng lượng yêu cầu và thực nhận | Mục Q4: scatter kWhRequested–kWhDelivered, tỷ lệ và độ bao phủ userInputs |
