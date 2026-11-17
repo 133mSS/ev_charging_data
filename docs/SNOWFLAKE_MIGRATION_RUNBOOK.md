@@ -105,7 +105,7 @@ After checking the Snowsight credit balance, load the full Static source and bui
 python scripts/deploy_snowflake.py --include-static
 ~~~
 
-The Static file is uploaded directly from its existing local path to the Snowflake internal stage; AUTO_COMPRESS=FALSE avoids creating an extra compressed copy. The loader checks file size and stops if the single cleaned file exceeds the configured maximum; split it into multiple gzip parts before retrying in that case.
+The Static file is uploaded directly from its existing local path to the Snowflake internal stage; AUTO_COMPRESS=FALSE avoids creating an extra compressed copy. If the compressed file is larger than 250 MiB, the loader prints a performance warning. Snowflake PUT can upload larger files in chunks, but COPY throughput is generally better with multiple 100–250 MiB compressed files. The current loader proceeds with the existing file and does not create local split copies.
 
 The command performs:
 1. Bootstrap database and warehouse.
