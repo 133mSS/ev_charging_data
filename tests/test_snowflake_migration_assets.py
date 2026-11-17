@@ -92,11 +92,14 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('load_dotenv(ROOT / ".env", override=True)', script)
 
-    def test_externalbrowser_authentication_does_not_require_password(self):
+    def test_sso_authentication_does_not_require_snowflake_password(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake")', script)
-        self.assertIn('if authenticator != "externalbrowser":', script)
+        self.assertIn('authenticator == "externalbrowser"', script)
+        self.assertIn('authenticator == "oauth_authorization_code"', script)
         self.assertIn('kwargs["authenticator"] = "externalbrowser"', script)
+        self.assertIn('kwargs["authenticator"] = "OAUTH_AUTHORIZATION_CODE"', script)
+        self.assertIn('if authenticator == "snowflake":', script)
 
     def test_sql_runner_calls_execute_string_on_connection_not_cursor(self):
         script = read("scripts/deploy_snowflake.py")
