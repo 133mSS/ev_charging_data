@@ -63,7 +63,13 @@ def get_connection():
             "externalbrowser (SAML SSO), or OAUTH_AUTHORIZATION_CODE (OIDC SSO)."
         )
 
-    required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
+    # OAuth Authorization Code identifies the user from the access token.
+    # Do not require or pass SNOWFLAKE_USER in this mode: a separately supplied
+    # username can differ from the identity authenticated in the browser and
+    # trigger Snowflake error 390309 (OAUTH_USERNAMES_MISMATCH).
+    required = ["SNOWFLAKE_ACCOUNT"]
+    if authenticator != "oauth_authorization_code":
+        required.append("SNOWFLAKE_USER")
     if authenticator == "snowflake":
         required.append("SNOWFLAKE_PASSWORD")
     missing = [name for name in required if not os.getenv(name) or not os.getenv(name).strip()]
@@ -76,10 +82,13 @@ def get_connection():
     # neither object exists yet. The bootstrap SQL creates them before USE.
     kwargs = {
         "account": os.environ["SNOWFLAKE_ACCOUNT"].strip(),
-        "user": os.environ["SNOWFLAKE_USER"].strip(),
         "login_timeout": 30,
         "network_timeout": 300,
     }
+    # Password and SAML SSO modes need an explicit Snowflake login name.
+    # OAuth Authorization Code derives the authenticated user from the token.
+    if authenticator != "oauth_authorization_code":
+        kwargs["user"] = os.environ["SNOWFLAKE_USER"].strip()
     if authenticator == "externalbrowser":
         # Browser-based SAML 2.0 SSO.
         kwargs["authenticator"] = "externalbrowser"
