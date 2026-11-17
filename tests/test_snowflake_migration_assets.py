@@ -88,6 +88,16 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("COPY INTO", script)
         self.assertNotIn("password = '", script.lower())
 
+    def test_project_env_overrides_stale_process_environment(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('load_dotenv(ROOT / ".env", override=True)', script)
+
+    def test_externalbrowser_authentication_does_not_require_password(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake")', script)
+        self.assertIn('if authenticator != "externalbrowser":', script)
+        self.assertIn('kwargs["authenticator"] = "externalbrowser"', script)
+
     def test_sql_runner_calls_execute_string_on_connection_not_cursor(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn("connection.execute_string(", script)
