@@ -111,24 +111,22 @@ Based on the deployment output provided during the project run:
 - Q3 returned zero valid sessions and Q5 returned 3,673 expected UTC hours, zero observed hours and 3,673 hours without observations. These are incomplete Static-dependent results, not evidence that no vehicles charged or the JPL site had no load.
 - The final deployment step stopped while publishing Streamlit because the Python deployment script had an uninitialized `stage_path`. The repository fix now uses the shared stage-path helper and is covered by CI.
 
-**Next action:** pull the latest `main` and run `.scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
+**Next action:** pull the latest `main` and run `.+scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
 
 This is a partial cloud migration checkpoint based on actual output. It is not yet the completed Q1–Q5 deployment because Q3 and Q5 require Static measurements.
 
-## 8. Account-side deployment status
+## 9. Remaining account-side steps
 
-**Pending execution in the Snowflake account:** uploading the source files, running RAW COPY INTO, creating the warehouse objects, building Power marts and publishing the Streamlit app.
+The API and userInputs landing, warehouse transformation and validation have run in the user's Snowflake account. The remaining cloud tasks are:
 
-After deployment, insert evidence from:
-- RAW row counts for sessions, userInputs, Static measurements and mapping.
-- MART.V_LOAD_RECONCILIATION.
-- Q5 POWER_SITE_HOUR row count and observation-presence counts.
-- Screenshots of the Q1–Q5 Streamlit dashboard.
-- Snowflake query history and trial credit balance.
+- Retry publishing the Streamlit app after pulling the fixed stage-path code.
+- Load the full Static measurement file and build the Static-dependent marts (Q3 and Q5).
+- Reconcile the Static row count and matched/API-only/static-only counts against the local source audits.
+- Capture populated dashboard screenshots, Snowflake query history and the current trial-credit balance.
 
-The account screenshot supplied during implementation showed a Snowflake trial with 398 of 400 credits remaining and 13 days left at that time. This is a point-in-time account snapshot and must be refreshed before submission. Snowflake trial usage consumes credits for compute and storage; the trial expires after 30 days or when free usage is depleted, whichever comes first. A suspended trial cannot run warehouses, load data or execute queries until reactivated/upgraded.
+The account screenshot supplied during implementation showed a Snowflake trial with 398 of 400 credits remaining and 13 days left at that time. This is only a historical snapshot; refresh the actual balance and expiry before the full Static load and before submission.
 
-## 9. Conclusion
+## 10. Conclusion
 
 The Snowflake migration package establishes a cloud-first target architecture that consolidates storage, ETL, analytical warehouse and dashboard serving in one platform. It is designed to remove the laptop's local compute and storage bottleneck, preserve the genuine multi-source ACN-Data dataset, and retain the analytical logic for the five research questions.
 
