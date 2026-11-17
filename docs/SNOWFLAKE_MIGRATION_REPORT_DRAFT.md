@@ -66,7 +66,7 @@ The Snowflake deployment package includes:
 - Snowflake warehouse model and full-Static view.
 - Power marts for last-positive-current timing, station-hour observations, station-month coverage and complete site-hour calendar.
 - SQL validation queries for row counts and Q1–Q5.
-- A Python uploader that transfers existing local CSV/CSV.GZ files directly to the Snowflake internal stage using PUT, then loads them through COPY INTO.
+- A Python uploader that transfers existing local CSV/CSV.GZ files directly to the Snowflake internal stage using PUT, then loads them through COPY INTO. Large inputs are uploaded without creating local duplicates; Snowflake recommends multiple approximately 100–250 MiB compressed files for efficient COPY parallelism.
 - A Streamlit in Snowflake dashboard that queries Snowflake through the active Snowpark session.
 
 ## 7. Account-side deployment status
