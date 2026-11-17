@@ -242,6 +242,15 @@ def render_dashboard() -> None:
         "thời lượng kết nối, mức sử dụng theo trạm và chênh lệch giữa yêu cầu với điện năng thực nhận."
     )
 
+    st.info(
+        "**Đây là dashboard phân tích chính, được tổ chức theo 5 câu hỏi nghiên cứu.** "
+        "Q1: thời điểm/ngày bắt đầu sạc (mục 02); "
+        "Q2: khác biệt mức sử dụng giữa EVSE (mục 05); "
+        "Q3: thời lượng kết nối và khoảng thời gian sau mốc dòng sạc cuối (mục 04 và 06); "
+        "Q4: năng lượng yêu cầu so với thực nhận (mục 07); "
+        "Q5: Power và độ bao phủ (mục 03; xem dashboard Power bổ trợ để kiểm toán toàn bộ Static)."
+    )
+
     try:
         monthly_all = read_query(MONTHLY_SQL)
         stations_df = read_query(STATIONS_SQL)
@@ -436,7 +445,7 @@ def render_dashboard() -> None:
     )
 
     # 01. Monthly consumption
-    st.header("01. Xu hướng tiêu thụ điện theo tháng")
+    st.header("Bổ sung. Xu hướng tiêu thụ điện theo tháng")
     left, right = st.columns(2)
 
     with left:
@@ -473,7 +482,7 @@ def render_dashboard() -> None:
     )
 
     # 02. Session start time
-    st.header("02. Người dùng thường bắt đầu sạc lúc nào?")
+    st.header("Q1. Nhu cầu sạc tập trung vào ngày nào và khung giờ nào?")
     left, right = st.columns(2)
     hour_ticks = list(range(24))
     hour_text = [f"{hour:02d}:00" for hour in hour_ticks]
@@ -526,7 +535,7 @@ def render_dashboard() -> None:
     )
 
     # 03. Power + coverage
-    st.header("03. Công suất đo được và độ bao phủ dữ liệu")
+    st.header("Q5. Công suất quan sát và số EVSE có dữ liệu thay đổi thế nào trong ngày?")
     left, right = st.columns(2)
 
     if selected_station is None:
@@ -603,7 +612,7 @@ def render_dashboard() -> None:
     )
 
     # 04. Connection duration analysis
-    st.header("04. Mối liên hệ giữa thời lượng kết nối và năng lượng")
+    st.header("Q3a. Thời lượng kết nối liên quan thế nào đến điện năng nhận được?")
 
     if duration.empty:
         st.info("Không có dữ liệu thời lượng kết nối trong khoảng đã chọn.")
@@ -685,7 +694,7 @@ def render_dashboard() -> None:
             "kết nối, không phải công suất sạc thực đo."
         )
     # 05. Station-level ranking and monthly trend.
-    st.header("05. Trạm nào đang ghi nhận mức sử dụng cao nhất?")
+    st.header("Q2. Mức độ sử dụng ghi nhận khác nhau thế nào giữa các EVSE?")
     st.caption(
         "So sánh cả số phiên và tổng điện năng. Không dùng các chỉ số này để gọi là "
         "tỷ lệ khai thác công suất trạm, vì bộ dữ liệu không cung cấp mẫu số về thời gian "
@@ -864,7 +873,7 @@ def render_dashboard() -> None:
         )
 
     # 06. Connection retained after the last non-zero current measurement.
-    st.header("06. Xe còn kết nối bao lâu sau khi ngừng ghi nhận dòng sạc?")
+    st.header("Q3b. Xe còn kết nối bao lâu sau lần cuối ghi nhận dòng sạc khác 0?")
     st.write(
         "Chỉ số này được tính bằng thời điểm ngắt kết nối trừ thời điểm cuối cùng ghi nhận "
         "dòng điện khác 0 (`doneChargingTime`). Nó giúp nhận diện những phiên mà xe vẫn "
@@ -961,7 +970,7 @@ def render_dashboard() -> None:
         )
 
     # 07. User request compared with session energy delivered.
-    st.header("07. Năng lượng người dùng yêu cầu và năng lượng thực nhận")
+    st.header("Q4. Năng lượng thực nhận so với yêu cầu cuối cùng được ghi nhận ra sao?")
     st.write(
         "Mỗi phiên có thể có nhiều lần cập nhật `userInputs`. Phân tích chọn bản ghi có "
         "`modified_at` mới nhất cho từng phiên, sau đó so sánh `kWhRequested` với `kWhDelivered` "
