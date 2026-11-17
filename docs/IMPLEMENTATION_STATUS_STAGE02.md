@@ -132,3 +132,12 @@ To launch the Power dashboard automatically after the two audit scripts:
 8. Capture account evidence and update the report draft with the real account-side numbers.
 
 **Reporting boundary:** as of this commit, the Snowflake migration code and deployment package are implemented in the repository, but the Snowflake account migration is pending. The report must describe the former as implemented and the latter as pending until actual Snowflake query results and dashboard screenshots exist.
+
+
+## 8. Final Snowflake repository integration status (18 Nov 2026)
+
+- Snowflake deployment code, SQL schemas/marts, Streamlit dashboard, Windows wrapper, runbook and report draft have been merged into main.
+- Main commit: 95b8176bee656ec28de26dfa7b3e1ff7c1dc456b.
+- GitHub Actions after merge: Python compile step passed; 37 unit/regression tests passed.
+- Account-side Snowflake load and dashboard verification remain pending. No claim is made that the 175,390,901 Static measurement rows have already been loaded into Snowflake.
+- Next account-side action: configure local .env, run the API-first deployment, verify credits and row counts, then opt in to the Static load with -IncludeStatic -SkipCoreLoad.
