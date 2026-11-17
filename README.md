@@ -212,3 +212,80 @@ Use this cohort for like-for-like month comparisons only. Do not discard the oth
 - The sum of station-hour means is not a synchronized facility load because observations from different EVSEs do not necessarily share timestamps.
 - API session minutes are session-minutes and can overlap; they are not unique occupied wall-clock minutes.
 - For definitions, results, evidence screenshots and the full runbook, see docs/JPL_POWER_ANALYTICS_FINAL.md.
+
+
+## 9. Snowflake cloud deployment (new)
+
+The repository now includes a Snowflake-first deployment package. It retains the local PostgreSQL implementation as a reference/fallback and does not delete or overwrite local source data.
+
+### Target architecture
+
+- **Snowflake RAW:** internal stage plus typed landing tables for API sessions, userInputs, Static measurements and session mapping.
+- **Snowflake WAREHOUSE:** station/date/time dimensions, API session facts, user-request facts and a view over all Static measurements. The Static object is a view over the RAW table to avoid a second physical copy of the 175M-row dataset.
+- **Snowflake MART:** last-positive-current timing, station-hour Power, station-month coverage, full UTC site-hour calendar and hour-of-day profile.
+- **Snowflake Streamlit:** one dashboard using the active Snowpark session, with Q1–Q5 analysis.
+- **GitHub:** remains the source-code/version-control system.
+
+### Deployment assets
+
+- snowflake/00_bootstrap.sql
+- snowflake/01_raw_staging.sql
+- snowflake/02_warehouse.sql
+- snowflake/03_power_marts.sql
+- snowflake/04_validation.sql
+- snowflake/streamlit_app.py
+- snowflake/environment.yml
+- scripts/deploy_snowflake.py
+- requirements-snowflake.txt
+- docs/SNOWFLAKE_MIGRATION_RUNBOOK.md
+- docs/SNOWFLAKE_MIGRATION_REPORT_DRAFT.md
+
+### Credentials
+
+Install the optional Snowflake connector:
+
+~~~powershell
+python -m pip install -r requirements-snowflake.txt
+~~~
+
+Add these values to a local .env file (never commit the real .env):
+
+~~~dotenv
+SNOWFLAKE_ACCOUNT=<your-account-identifier>
+SNOWFLAKE_USER=<your-user>
+SNOWFLAKE_PASSWORD=<your-password>
+SNOWFLAKE_ROLE=<optional-role>
+SNOWFLAKE_WAREHOUSE=JPL_ETL_WH
+~~~
+
+The account role must have privileges to create the database, warehouse, schemas, stages, tables, views and Streamlit app. The deployment code uses credentials from environment variables; no credential is embedded in repository source.
+
+### Two-step deployment
+
+First deploy the smaller API inputs, create the warehouse objects and publish the dashboard shell:
+
+~~~powershell
+python scripts/deploy_snowflake.py
+~~~
+
+This does **not** load the 175M-row Static file. Q1–Q4 can be validated after the API data loads; Q5 remains unpopulated until Static is loaded.
+
+Before using the remaining Snowflake trial credits, check the current Snowsight credit balance. Then opt in to the large Static upload and Power marts:
+
+~~~powershell
+python scripts/deploy_snowflake.py --include-static
+~~~
+
+The loader uploads the existing processed files directly to the Snowflake internal stage (PUT) and loads them with COPY INTO; it does not create an additional local data copy. It checks that the single compressed Static file is within the configured per-file load limit. If the check stops, split the compressed input safely before retrying; do not bypass the guard.
+
+The bootstrap creates an X-Small warehouse with 60-second auto-suspend. Monitor trial credit consumption and stop the warehouse when not in use. A Snowflake trial is time-limited and is not a permanent free hosting plan.
+
+### Validation
+
+Run snowflake/04_validation.sql in Snowsight or inspect its output from the deployment script. Confirm API/userInputs/Static row counts, MATCHED vs STATIC_ONLY session counts and the Q5 site-hour calendar. The July–November Power window should contain 3,673 elapsed UTC hours, but actual row counts/observation presence must be read from the live Snowflake load, not copied from local logs.
+
+### Launch and account-side status
+
+The deploy script creates JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD and publishes a live Streamlit version. Open the Streamlit object from Snowsight.
+
+**Implementation status:** deployment SQL, loader, app and report/runbook assets are committed to this branch. The user's Snowflake account has not yet been connected or loaded by this repository change. Do not report the Snowflake warehouse/dashboard as operational until the account-side deployment, row-count reconciliation and dashboard screenshots have been completed.
