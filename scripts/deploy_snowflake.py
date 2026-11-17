@@ -52,10 +52,21 @@ def get_connection():
 
     load_dotenv(ROOT / ".env", override=True)
     authenticator = os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake").strip().lower()
+    supported_authenticators = {
+        "snowflake",
+        "externalbrowser",
+        "oauth_authorization_code",
+    }
+    if authenticator not in supported_authenticators:
+        raise RuntimeError(
+            "Unsupported SNOWFLAKE_AUTHENTICATOR. Choose snowflake, "
+            "externalbrowser (SAML SSO), or OAUTH_AUTHORIZATION_CODE (OIDC SSO)."
+        )
+
     required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
-    if authenticator != "externalbrowser":
+    if authenticator == "snowflake":
         required.append("SNOWFLAKE_PASSWORD")
-    missing = [name for name in required if not os.getenv(name)]
+    missing = [name for name in required if not os.getenv(name) or not os.getenv(name).strip()]
     if missing:
         raise RuntimeError(
             "Missing Snowflake credentials in .env: " + ", ".join(missing)
@@ -70,7 +81,11 @@ def get_connection():
         "network_timeout": 300,
     }
     if authenticator == "externalbrowser":
+        # Browser-based SAML 2.0 SSO.
         kwargs["authenticator"] = "externalbrowser"
+    elif authenticator == "oauth_authorization_code":
+        # Browser-based OIDC SSO (for example, managed Google sign-in).
+        kwargs["authenticator"] = "OAUTH_AUTHORIZATION_CODE"
     else:
         kwargs["password"] = os.environ["SNOWFLAKE_PASSWORD"]
     role = os.getenv("SNOWFLAKE_ROLE")
