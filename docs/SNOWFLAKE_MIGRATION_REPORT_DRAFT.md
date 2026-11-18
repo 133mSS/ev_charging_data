@@ -115,6 +115,54 @@ Based on the deployment output provided during the project run:
 
 This is a partial cloud migration checkpoint based on actual output. It is not yet the completed Q1–Q5 deployment because Q3 and Q5 require Static measurements.
 
+## 9. Full Static load and analytics validation — 18 November 2026
+
+The user subsequently ran the full Static deployment with `--IncludeStatic --SkipCoreLoad`. The deployment log reports successful completion of the entire sequence, including Streamlit live-version publication.
+
+### Loaded data and reconciliation
+
+| Dataset | Snowflake rows |
+|---|---:|
+| API charging sessions | 33,638 |
+| User input events | 41,207 |
+| All Static measurements | 175,390,901 |
+| Static measurement rows mapped to API | 164,438,039 |
+| Static measurement rows not mapped to API | 10,952,862 |
+
+The two Static categories sum exactly to the total Static row count. These MATCHED and STATIC_ONLY values refer to Static measurement rows, not counts of charging sessions.
+
+### Research-question validation results
+
+| Research question | Validated result from the deployment output |
+|---|---|
+| Q1 — start time and weekday pattern | Session facts populated; hourly/day grouping query returned rows |
+| Q2 — EVSE usage differences | Top EVSE usage ranking returned rows; highest energy among the shown top ten: 15,979.49 kWh for 1-1-194-826 |
+| Q3 — connection and post-last-current interval | 25,647 valid sessions; median 124.616667 minutes; P95 478.995 minutes |
+| Q4 — requested versus delivered energy | 31,444 sessions with a valid latest positive kWh request; median delivered/requested ratio 60.08875% |
+| Q5 — Power and observation coverage | 3,673 UTC hours; 2,240 hours with any observation; 1,433 hours without observation |
+
+Q5 hourly observation coverage is 2,240 / 3,673 = 61.0%. No-observation hours must remain distinct from zero Power; these are session-based Static observations rather than continuous 24/7 telemetry.
+
+### Monthly station observation coverage
+
+| Local month | EVSEs with observations | Mean station-hour calendar coverage |
+|---|---:|---:|
+| 2020-07 | 37 | 12.2675% |
+| 2020-08 | 45 | 12.6971% |
+| 2020-09 | 40 | 10.2882% |
+| 2020-10 | 46 | 13.3444% |
+| 2020-11 | 41 | 10.3515% |
+
+### Streamlit deployment status
+
+The deployment output confirms:
+- Streamlit source and environment files uploaded to the internal stage.
+- `JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD` created successfully.
+- `ADD LIVE VERSION FROM LAST` succeeded.
+- The deployment script printed `Snowflake deployment/load sequence completed.`
+
+The next validation is a UI smoke test: open the Streamlit app in Snowsight, confirm Q1–Q5 render and match the SQL validation values, and capture screenshots. The app publication succeeded, but visual rendering has not yet been independently confirmed from a browser screenshot.
+
 ## 9. Remaining account-side steps
 
 The API and userInputs landing, warehouse transformation and validation have run in the user's Snowflake account. The remaining cloud tasks are:
