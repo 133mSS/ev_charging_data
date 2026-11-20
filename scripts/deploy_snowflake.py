@@ -346,6 +346,7 @@ def deploy_streamlit_app(connection) -> None:
             FROM '{stage_path}'
             MAIN_FILE = 'streamlit_app.py'
             QUERY_WAREHOUSE = {warehouse}
+            RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'
             COMMENT = 'JPL EV Charging Analytics Q1-Q5'
         """)
         print("Streamlit object created.")
