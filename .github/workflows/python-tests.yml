@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      - feature/jpl-temporal-power-audit
+      - "feature/**"
+      - "chore/**"
   pull_request:
     branches:
       - main
