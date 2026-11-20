@@ -1,0 +1,159 @@
+-- Repeatable Snowflake data-quality and reconciliation gate.
+-- Each row is a check; deployment stops when any status is FAIL.
+USE DATABASE JPL_ANALYTICS;
+USE WAREHOUSE JPL_ETL_WH;
+
+WITH CHECKS AS (
+    SELECT
+        'DUPLICATE_SESSION_KEYS' AS CHECK_NAME,
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT SESSION_ID
+                FROM WAREHOUSE.FACT_CHARGING_SESSIONS
+                GROUP BY SESSION_ID
+                HAVING COUNT(*) > 1
+            )
+        ) AS OBSERVED_VALUE,
+        0 AS EXPECTED_VALUE,
+        'EQUAL' AS CHECK_TYPE,
+        'FACT_CHARGING_SESSIONS must contain one row per SESSION_ID.' AS DETAILS
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_USER_REQUEST_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT SESSION_ID, INPUT_ID
+                FROM WAREHOUSE.FACT_USER_REQUESTS
+                GROUP BY SESSION_ID, INPUT_ID
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'FACT_USER_REQUESTS grain is one row per SESSION_ID and INPUT_ID.'
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_STATIC_MAPPING_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT STATIC_SESSION_ID
+                FROM RAW.STG_SESSION_MAPPING
+                GROUP BY STATIC_SESSION_ID
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'Each Static session identifier must map to at most one mapping row.'
+
+    UNION ALL
+    SELECT
+        'STATIC_ROW_RECONCILIATION_DELTA',
+        (
+            SELECT ABS(
+                COUNT(*) - COUNT_IF(MATCH_STATUS IN ('MATCHED', 'STATIC_ONLY'))
+            )
+            FROM WAREHOUSE.FACT_STATIC_MEASUREMENTS
+        ),
+        0,
+        'EQUAL',
+        'All Static measurement rows must be classified as MATCHED or STATIC_ONLY.'
+
+    UNION ALL
+    SELECT
+        'UNMAPPED_STATIC_ROWS',
+        (
+            SELECT COUNT_IF(MATCH_STATUS = 'UNMAPPED_STATIC')
+            FROM WAREHOUSE.FACT_STATIC_MEASUREMENTS
+        ),
+        0,
+        'EQUAL',
+        'The full Static view must preserve and classify every source Static session.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_SESSION_STATION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_CHARGING_SESSIONS F
+            LEFT JOIN WAREHOUSE.DIM_STATION D
+                ON D.STATION_ID = F.STATION_ID
+            WHERE F.STATION_ID IS NOT NULL
+              AND D.STATION_ID IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every non-null station on a charging-session fact must resolve to DIM_STATION.'
+
+    UNION ALL
+    SELECT
+        'INVALID_POST_LAST_CURRENT_INTERVALS',
+        (
+            SELECT COUNT_IF(
+                POST_LAST_CURRENT_MINUTES < 0
+                OR LAST_NONZERO_CURRENT_UTC < F.CONNECTION_TIME_UTC
+                OR LAST_NONZERO_CURRENT_UTC > F.DISCONNECT_TIME_UTC
+            )
+            FROM MART.SESSION_POST_CURRENT F
+        ),
+        0,
+        'EQUAL',
+        'The last positive-current timestamp must be inside the API connection interval.'
+
+    UNION ALL
+    SELECT
+        'POWER_SITE_HOUR_COUNT',
+        (SELECT COUNT(*) FROM MART.POWER_SITE_HOUR),
+        3673,
+        'EQUAL',
+        'The July-November 2020 site calendar contains 3,673 elapsed UTC hours.'
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_POWER_SITE_HOUR_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT UTC_HOUR_START
+                FROM MART.POWER_SITE_HOUR
+                GROUP BY UTC_HOUR_START
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'The complete site-hour calendar must have one row per UTC hour.'
+
+    UNION ALL
+    SELECT
+        'CHARGING_SESSION_FACT_NONEMPTY',
+        (SELECT COUNT(*) FROM WAREHOUSE.FACT_CHARGING_SESSIONS),
+        1,
+        'AT_LEAST',
+        'The API charging-session fact must contain records.'
+
+    UNION ALL
+    SELECT
+        'STATIC_MEASUREMENT_FACT_NONEMPTY',
+        (SELECT COUNT(*) FROM WAREHOUSE.FACT_STATIC_MEASUREMENTS),
+        1,
+        'AT_LEAST',
+        'The full Static measurement view must contain records.'
+)
+SELECT
+    CHECK_NAME,
+    OBSERVED_VALUE,
+    EXPECTED_VALUE,
+    CASE
+        WHEN CHECK_TYPE = 'EQUAL' AND OBSERVED_VALUE = EXPECTED_VALUE THEN 'PASS'
+        WHEN CHECK_TYPE = 'AT_LEAST' AND OBSERVED_VALUE >= EXPECTED_VALUE THEN 'PASS'
+        ELSE 'FAIL'
+    END AS STATUS,
+    DETAILS
+FROM CHECKS
+ORDER BY STATUS DESC, CHECK_NAME;
