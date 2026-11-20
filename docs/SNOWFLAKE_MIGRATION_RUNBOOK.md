@@ -90,7 +90,7 @@ Biến cần thiết tùy cơ chế xác thực:
 - `SNOWFLAKE_WAREHOUSE=JPL_ETL_WH`
 - `SNOWFLAKE_AUTHENTICATOR` (nếu dùng SSO)
 
-`snowflake/environment.yml` dùng Conda/Snowflake Anaconda Channel. Python 3.11 được khai báo theo cú pháp Conda `python=3.11`; đây là cấu hình runtime Warehouse phù hợp với hướng dẫn Snowflake hiện hành. Không dùng cú pháp pip `python==3.11` trong file này.
+`snowflake/environment.yml` dùng Conda/Snowflake Anaconda Channel để khai báo các package ứng dụng. Warehouse Runtime hiện mặc định cung cấp Python 3.11; vì vậy file không liệt kê `python=3.11` như một package. Runtime được chỉ định rõ là `SYSTEM$WAREHOUSE_RUNTIME` trong lệnh tạo Streamlit. Python version có thể xác nhận/chọn trong Packages → Python Version ở Snowsight.
 
 ## 6. Vận hành
 
