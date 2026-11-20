@@ -1,181 +1,179 @@
-# Snowflake migration of JPL EV Charging Analytics — report draft
+# Báo cáo triển khai Snowflake — JPL EV Charging Analytics
 
-> **Status note:** This draft distinguishes the implemented Snowflake deployment package from the account-side data migration. Replace all pending-execution notes with real Snowsight evidence after running the deployment. Do not describe the Snowflake warehouse or dashboard as operational before the row-count checks pass.
+**Ngày cập nhật:** 20/11/2026  
+**Phạm vi:** chuyển nền tảng lưu trữ, warehouse, phân tích và dashboard của JPL EV Charging Analytics sang Snowflake.
 
-## 1. Migration objective
+## 1. Tóm tắt
 
-The project originally used a local PostgreSQL warehouse and local processing for the ACN-Data JPL dataset. The local Static archive contains 27,723 compressed files and the cleaned measurement output contains 175,390,901 rows. Processing and storing this volume on the development laptop created a storage and compute bottleneck.
+Project sử dụng dữ liệu thực từ ACN-Data JPL, gồm API session/userInputs và Static electrical measurements theo từng phiên. Snapshot đã xử lý gồm 33.638 sessions, 41.207 userInputs và 175.390.901 Static measurement rows.
 
-The migration introduces Snowflake as the unified cloud data platform for data landing, SQL transformation, analytical storage and Streamlit dashboard serving. GitHub remains the version-control system. The original local PostgreSQL pipeline is retained as a reference and fallback during migration.
+Snowflake được sử dụng làm cloud data platform cho landing, warehouse, analytical marts và Streamlit dashboard. Local Python/Pandas thực hiện ingest/clean/matching; các file cleaned được upload bằng PUT và nạp bằng COPY INTO; các phép biến đổi warehouse/mart và truy vấn phân tích được thực hiện bằng Snowflake SQL.
 
-## 2. Data sources
+Lần triển khai đầy đủ ngày 18/11/2026 đã hoàn tất. Log triển khai xác nhận số dòng nạp, đối soát Static, truy vấn Q1–Q5 và publish Streamlit live version. Ảnh Snowsight do chủ project cung cấp xác nhận dashboard hiển thị các phần tổng quan và Q1–Q5.
 
-The project uses genuine ACN-Data sources, not synthetic/generated data:
+## 2. Nguồn dữ liệu
 
-- ACN-Data API provides charging-session metadata and userInputs.
-- ACN-Data Static provides per-session electrical time-series measurements, including charging current, voltage, charging state, cumulative energy and Power.
+| Nguồn | Nội dung | Phạm vi |
+|---|---|---|
+| ACN-Data API | Charging session metadata, connection/disconnect times, kWhDelivered, userInputs | Site alias jpl |
+| ACN-Data Static | Charging current, pilot, voltage, charging state, cumulative energy, Power | JPL Arroyo Garage 01 |
 
-The two sources complement one another: API records describe the charging session and user request history, while Static records provide electrical measurements during the session. The session mapping table preserves MATCHED, API_ONLY and STATIC_ONLY states rather than forcing unmatched records into an artificial join.
+Hai nguồn thuộc cùng hệ sinh thái ACN-Data và có vai trò bổ sung cho nhau. API mô tả session và yêu cầu người dùng; Static lưu phép đo điện theo thời gian trong từng session.
 
-## 3. Snowflake architecture
+Inventory Static: 27.723 file CSV.GZ, 52 historical station IDs trong tên file, khoảng ngày 2018-10-08 đến 2020-12-02. Số station ID lịch sử không được diễn giải là số EVSE được lắp đặt đồng thời.
 
-The target architecture has five logical layers:
+## 3. Quy trình ETL
 
-1. **RAW:** internal stage and typed landing tables for API sessions, userInputs, Static samples and session mapping.
-2. **WAREHOUSE:** station, user, date and time dimensions; charging-session and user-request facts; a full-Static measurement view.
-3. **MART:** derived connection-after-last-current metrics and compact station-hour, station-month and site-hour Power aggregates.
-4. **ANALYTICS:** query-ready views supporting the five research questions.
-5. **APPLICATION:** Streamlit in Snowflake, using the active Snowpark session instead of a local PostgreSQL connection.
+### 3.1. Extract
 
-The complete Static feed remains in one raw table. The warehouse Static fact is a view over that table with the session map attached, avoiding an unnecessary second physical copy of the 175-million-row dataset. Only compact analytical aggregates are materialized for dashboard responsiveness.
+- API được trích xuất bằng pagination và checkpoint, lưu thành snapshot JSON.
+- Static được lấy qua sparse checkout chỉ cho JPL Arroyo Garage 01.
+- Inventory script thống kê file, station ID và thời gian từ Git metadata trước khi đọc payload.
 
-The Snowflake virtual warehouse is configured as X-Small with auto-resume and 60-second auto-suspend to limit trial-credit consumption.
+### 3.2. Transform
 
-### Architecture flow
+Python/Pandas chuẩn hóa session metadata, userInputs, timestamp UTC, station ID và các cột phép đo. Static được xử lý theo từng file/chunk nhằm hạn chế RAM.
 
-~~~mermaid
-flowchart TD
-    API["ACN-Data API<br/>Sessions + userInputs"]
-    STATIC["ACN-Data Static<br/>Per-session electrical samples"]
-    GH["GitHub<br/>Versioned ETL / SQL / dashboard code"]
-    STAGE["Snowflake Internal Stage<br/>JPL_RAW_STAGE"]
-    RAW["RAW schema<br/>API · requests · Static · mapping"]
-    WH["WAREHOUSE schema<br/>Dimensions · session facts · request facts"]
-    MART["MART schema<br/>Session post-current · Power station-hour/month/site-hour"]
-    APP["Streamlit in Snowflake<br/>Q1–Q5"]
-    API --> STAGE
-    STATIC --> STAGE
-    STAGE --> RAW
-    RAW --> WH
-    WH --> MART
-    MART --> APP
-    WH --> APP
-    GH -. deployment code .-> STAGE
-~~~
+Session matching sử dụng station/session identifiers, sau đó phân loại MATCHED, API_ONLY và STATIC_ONLY. Dữ liệu không ghép được vẫn được giữ lại để kiểm toán; không ép quan hệ một-một giả tạo.
 
-The cleaned source files are staged from the existing local project by the Snowflake Connector. Data transformations and analytical aggregation after landing are executed in Snowflake SQL; the dashboard reads from Snowflake rather than a local PostgreSQL endpoint.
+### 3.3. Load
 
-## 4. Analytical questions
+Các file cleaned hiện có được upload trực tiếp lên Snowflake internal stage bằng PUT và nạp bằng COPY INTO. Loader sử dụng temporary table trước khi thay thế dữ liệu trong RAW table bằng transaction.
 
-| Research question | Measures and visual analysis |
+Static là bước nạp lớn riêng biệt; local file nén không được nhân bản thêm trong quá trình upload.
+
+## 4. Kiến trúc Snowflake
+
+Database: `JPL_ANALYTICS`  
+Warehouse: `JPL_ETL_WH` — X-SMALL, AUTO_RESUME và AUTO_SUSPEND 60 giây.
+
+| Layer | Nội dung |
 |---|---|
-| Q1. When does charging demand occur? | Session starts by local weekday and hour; normalized weekday-versus-weekend session and energy averages per calendar day |
-| Q2. How does recorded EVSE usage differ? | Session count, total delivered energy, average energy per session and connection duration by station |
-| Q3. How long do vehicles remain connected? | API connection duration, plus elapsed time from the last Static sample where charging current is positive to API disconnect |
-| Q4. How does delivered energy compare with user requests? | Latest userInputs request per session compared with kWhDelivered; coverage of sessions with a valid positive kWh request |
-| Q5. How do Power observations vary over time? | Power sample coverage, EVSE-by-month observation heatmap, hourly station-hour Power distribution and number of EVSEs with observations |
+| RAW | Internal stage, sessions, userInputs, Static, mapping và load audit |
+| WAREHOUSE | DIM_STATION, DIM_USER, DIM_DATE, DIM_TIME, FACT_CHARGING_SESSIONS, FACT_USER_REQUESTS và full-Static view |
+| MART | SESSION_LAST_CURRENT, SESSION_POST_CURRENT, POWER_STATION_HOUR, POWER_STATION_MONTH, POWER_SITE_HOUR, POWER_HOUR_OF_DAY_PROFILE |
+| ANALYTICS | Các view phục vụ câu hỏi nghiên cứu và Streamlit |
 
-Missing Static observations remain missing. They are not treated as zero kW or as proof that an EVSE was unavailable. A sum of station-hour averages is not presented as synchronized facility demand because different EVSE samples are not guaranteed to be simultaneous.
+### 4.1. Grain của các fact
 
-## 5. Verified local findings used to scope the cloud migration
+- FACT_CHARGING_SESSIONS: một dòng cho một API session.
+- FACT_USER_REQUESTS: một dòng cho một input event.
+- FACT_STATIC_MEASUREMENTS: một dòng cho một Static measurement; triển khai dưới dạng view trên RAW Static, có thêm mapping status.
 
-The local JPL processing completed the following before the Snowflake migration:
+Việc dùng view cho full Static tránh tạo bản sao vật lý thứ hai của tập 175 triệu dòng. Các aggregate station-hour/month/site-hour được materialize nhằm giảm lượng dữ liệu phải xử lý khi hiển thị dashboard.
 
-- 33,638 API sessions after snapshot refresh.
-- 175,390,901 cleaned Static measurement rows.
-- 14,427,675 Static rows in the July–November 2020 Power analysis window.
-- 50 station IDs with at least one observation during that window.
-- 100% row-level Power availability among the Static rows present in the selected period.
+## 5. Đối soát dữ liệu
 
-The period July–November 2020 was selected for the Power comparison because the historical Static archive does not retain Power uniformly in earlier records. The local temporal audit found 18,218 observed EVSE-hour buckets and was designed to compare them with a complete 3,673-hour UTC calendar.
+### 5.1. Session mapping
 
-These local results are source-side validation figures; they are not evidence that the same rows have already been loaded into Snowflake.
-
-## 6. Implementation in the repository
-
-The Snowflake deployment package includes:
-
-- SQL bootstrap for database, schemas, X-Small warehouse, CSV file format and internal stage.
-- RAW staging table definitions for all source files.
-- Snowflake warehouse model and full-Static view.
-- Power marts for last-positive-current timing, station-hour observations, station-month coverage and complete site-hour calendar.
-- SQL validation queries for row counts and Q1–Q5.
-- A Python uploader that transfers existing local CSV/CSV.GZ files directly to the Snowflake internal stage using PUT, then loads them through COPY INTO. Large inputs are uploaded without creating local duplicates; Snowflake recommends multiple approximately 100–250 MiB compressed files for efficient COPY parallelism.
-- A Streamlit in Snowflake dashboard that queries Snowflake through the active Snowpark session.
-
-## 7. Implementation status in GitHub
-
-The Snowflake migration source code, SQL assets, deployment wrapper, dashboard, runbook and report draft were merged into the repository main branch on **18 November 2026** in commit `95b8176bee656ec28de26dfa7b3e1ff7c1dc456b`. The GitHub Actions workflow on that commit completed successfully: Python entry-point compilation passed and all **37 unit/regression tests passed**.
-
-This verifies repository code checks only. It does not verify SQL execution or data loading in the user's Snowflake account.
-
-## 8. Account-side deployment checkpoint — 18 November 2026
-
-Based on the deployment output provided during the project run:
-
-- The Snowflake database, five schemas, X-Small warehouse, CSV/GZIP file format and internal stage were created successfully.
-- RAW staging tables were created successfully.
-- The API-first upload and COPY completed sufficiently for validation to report **33,638 API sessions** and **41,207 user-input records** in the warehouse.
-- The current run did not load Static measurements: `STATIC_ALL = 0`, `STATIC_MATCHED = 0`, and `STATIC_ONLY = 0`.
-- Q4 validation reported 31,444 sessions with a valid latest kWh request and a median delivered/requested ratio of approximately 60.09%.
-- Q3 returned zero valid sessions and Q5 returned 3,673 expected UTC hours, zero observed hours and 3,673 hours without observations. These are incomplete Static-dependent results, not evidence that no vehicles charged or the JPL site had no load.
-- The final deployment step stopped while publishing Streamlit because the Python deployment script had an uninitialized `stage_path`. The repository fix now uses the shared stage-path helper and is covered by CI.
-
-**Next action:** pull the latest `main` and run `.\scripts\run_snowflake_deploy.ps1 -SkipCoreLoad` to retry only the final application deployment and idempotent SQL steps. Load the Static feed only after the API dashboard is confirmed and the Snowflake credit/storage budget is reviewed.
-
-This is a partial cloud migration checkpoint based on actual output. It is not yet the completed Q1–Q5 deployment because Q3 and Q5 require Static measurements.
-
-## 9. Full Static load and analytics validation — 18 November 2026
-
-The user subsequently ran the full Static deployment with `--IncludeStatic --SkipCoreLoad`. The deployment log reports successful completion of the entire sequence, including Streamlit live-version publication.
-
-### Loaded data and reconciliation
-
-| Dataset | Snowflake rows |
+| Trạng thái | Số phiên |
 |---|---:|
-| API charging sessions | 33,638 |
-| User input events | 41,207 |
-| All Static measurements | 175,390,901 |
-| Static measurement rows mapped to API | 164,438,039 |
-| Static measurement rows not mapped to API | 10,952,862 |
+| MATCHED | 25.647 |
+| API_ONLY | 7.991 |
+| STATIC_ONLY | 1.978 |
 
-The two Static categories sum exactly to the total Static row count. These MATCHED and STATIC_ONLY values refer to Static measurement rows, not counts of charging sessions.
+API sessions = MATCHED + API_ONLY = 33.638. Static sessions = MATCHED + STATIC_ONLY = 27.625.
 
-### Research-question validation results
+### 5.2. Measurement rows trên Snowflake
 
-| Research question | Validated result from the deployment output |
-|---|---|
-| Q1 — start time and weekday pattern | Session facts populated; hourly/day grouping query returned rows |
-| Q2 — EVSE usage differences | Top EVSE usage ranking returned rows; highest energy among the shown top ten: 15,979.49 kWh for 1-1-194-826 |
-| Q3 — connection and post-last-current interval | 25,647 valid sessions; median 124.616667 minutes; P95 478.995 minutes |
-| Q4 — requested versus delivered energy | 31,444 sessions with a valid latest positive kWh request; median delivered/requested ratio 60.08875% |
-| Q5 — Power and observation coverage | 3,673 UTC hours; 2,240 hours with any observation; 1,433 hours without observation |
+| Trạng thái | Số dòng |
+|---|---:|
+| STATIC_ALL | 175.390.901 |
+| STATIC_MATCHED | 164.438.039 |
+| STATIC_ONLY | 10.952.862 |
 
-Q5 hourly observation coverage is 2,240 / 3,673 = 61.0%. No-observation hours must remain distinct from zero Power; these are session-based Static observations rather than continuous 24/7 telemetry.
+164.438.039 + 10.952.862 = 175.390.901. Các số trong bảng này là measurement rows, không phải số phiên.
 
-### Monthly station observation coverage
+## 6. Phân tích Q1–Q5
 
-| Local month | EVSEs with observations | Mean station-hour calendar coverage |
-|---|---:|---:|
-| 2020-07 | 37 | 12.2675% |
-| 2020-08 | 45 | 12.6971% |
-| 2020-09 | 40 | 10.2882% |
-| 2020-10 | 46 | 13.3444% |
-| 2020-11 | 41 | 10.3515% |
+### Q1 — Nhu cầu sạc theo thứ và giờ
 
-### Streamlit deployment status
+Session được nhóm theo ngày địa phương, thứ ISO và giờ bắt đầu. Dashboard dùng heatmap thứ × giờ và biểu đồ đường so sánh số phiên/kWh gắn với giờ bắt đầu trung bình mỗi ngày giữa ngày thường và cuối tuần. Số liệu được chuẩn hóa theo số ngày lịch của từng nhóm.
 
-The deployment output confirms:
-- Streamlit source and environment files uploaded to the internal stage.
-- `JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD` created successfully.
-- `ADD LIVE VERSION FROM LAST` succeeded.
-- The deployment script printed `Snowflake deployment/load sequence completed.`
+### Q2 — Mức sử dụng theo EVSE
 
-The next validation is a UI smoke test: open the Streamlit app in Snowsight, confirm Q1–Q5 render and match the SQL validation values, and capture screenshots. The app publication succeeded, but visual rendering has not yet been independently confirmed from a browser screenshot.
+Các chỉ số gồm session count, total delivered energy, average energy/session, average connection duration và energy share. EVSE có tổng năng lượng cao nhất là 1-1-194-826 với khoảng 15.979,49 kWh; EVSE có nhiều phiên nhất là 1-1-178-823 với 1.449 phiên.
 
-## 9. Remaining account-side steps
+### Q3 — Thời lượng kết nối và khoảng từ mẫu dòng điện dương cuối
 
-The API and userInputs landing, warehouse transformation and validation have run in the user's Snowflake account. The remaining cloud tasks are:
+Thời lượng kết nối được tính từ API disconnect_time trừ connection_time và phân thành bốn nhóm. Kết quả: 753 phiên dưới 1 giờ; 4.854 phiên từ 1–3 giờ; 8.344 phiên từ 3–6 giờ; 19.687 phiên từ 6 giờ trở lên.
 
-- Retry publishing the Streamlit app after pulling the fixed stage-path code.
-- Load the full Static measurement file and build the Static-dependent marts (Q3 and Q5).
-- Reconcile the Static row count and matched/API-only/static-only counts against the local source audits.
-- Capture populated dashboard screenshots, Snowflake query history and the current trial-credit balance.
+Phân tích bổ sung tìm timestamp cuối cùng trong Static có charging_current_a > 0, sau đó tính khoảng thời gian đến API disconnect_time. Kết quả có 25.647 phiên hợp lệ, median 124,6167 phút và P95 478,995 phút. Chỉ số này không phải thời điểm pin đầy hoặc thời điểm kết thúc sạc chính xác.
 
-The account screenshot supplied during implementation showed a Snowflake trial with 398 of 400 credits remaining and 13 days left at that time. This is only a historical snapshot; refresh the actual balance and expiry before the full Static load and before submission.
+### Q4 — Năng lượng thực nhận so với yêu cầu
 
-## 10. Conclusion
+Với mỗi session, chọn userInputs mới nhất theo modified_at và input_id, sau đó so sánh kWhRequested dương với kWhDelivered.
 
-The Snowflake migration package establishes a cloud-first target architecture that consolidates storage, ETL, analytical warehouse and dashboard serving in one platform. It is designed to remove the laptop's local compute and storage bottleneck, preserve the genuine multi-source ACN-Data dataset, and retain the analytical logic for the five research questions.
+- API sessions trong toàn phạm vi: 33.638.
+- Sessions có latest valid kWh request: 31.444.
+- Request coverage: 93,48%.
+- Median delivered/requested: 60,08875%.
+- Tỷ lệ session có delivered/requested >= 90%: 14,2%.
 
-The migration should be considered technically complete only after the full data load, row-count reconciliation, Power mart generation and dashboard validation succeed in the user's Snowflake account.
+Scatter plot sử dụng đường tham chiếu y=x. Đây là so sánh mô tả, không xác định nguyên nhân của chênh lệch.
+
+### Q5 — Power và độ bao phủ theo thời gian
+
+Power được phân tích trong cửa sổ 07/2020–11/2020. Lịch sử Static không lưu đều các trường Power/Voltage ở giai đoạn sớm; tháng 06/2020 là tháng chuyển tiếp và tháng 12/2020 chỉ có dữ liệu đến ngày 02/12.
+
+| Chỉ tiêu | Giá trị |
+|---|---:|
+| Static samples trong cửa sổ | 14.427.675 |
+| Station-hour buckets | 18.218 |
+| EVSE có quan sát | 50 |
+| Power row coverage | 100,00% |
+| UTC hours có ít nhất một quan sát | 2.240 |
+| UTC hours không có quan sát | 1.433 |
+| Tổng UTC hours | 3.673 |
+| Site-hour observation coverage | 61,0% |
+
+Power row coverage là tỷ lệ hàng Static hiện có có Power non-null. Site-hour observation coverage là tỷ lệ giờ UTC có ít nhất một EVSE ghi nhận trên tổng 3.673 giờ. 100% row coverage không có nghĩa quan sát liên tục 100% thời gian.
+
+Dashboard sử dụng fixed 50-station population khi dựng station × month grid; station-month không có quan sát được giữ lại với 0% calendar-hour coverage. Validation SQL cũng sử dụng cùng population để thống nhất mẫu số.
+
+Static là dữ liệu theo phiên, không phải telemetry 24/7. Missing observations không được đổi thành 0 kW hoặc diễn giải là EVSE downtime. Station-hour means giữa các EVSE không bảo đảm đồng bộ timestamp; không cộng chúng thành tổng phụ tải đồng thời toàn site.
+
+## 7. Streamlit dashboard
+
+Streamlit chạy trực tiếp trên Snowflake qua active Snowpark session, không kết nối PostgreSQL local. Giao diện gồm bộ lọc tháng, KPI tổng quan và năm phần Q1–Q5. SQL phân tích được tách thành module riêng `snowflake/analytics_queries.py`; phần Streamlit chịu trách nhiệm trình bày, định dạng bảng và biểu đồ.
+
+Object được publish: `JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD`.
+
+Lần triển khai 18/11 xác nhận Streamlit live version đã publish. Ảnh Snowsight được cung cấp cho thấy giao diện tổng quan và các biểu đồ Q1–Q5 hiển thị.
+
+## 8. Validation và kiểm thử
+
+Baseline deployment output xác nhận:
+- API sessions: 33.638.
+- User inputs: 41.207.
+- Static all: 175.390.901.
+- MATCHED + STATIC_ONLY measurement reconciliation khớp.
+- Q3, Q4 và Q5 có kết quả như các bảng trên.
+- Streamlit live version publish thành công.
+
+GitHub Actions trên baseline commit `294d471d36ba58a08c103608834d69a408f51525` có trạng thái success (workflow run 44208261833), kiểm tra compile và unit/regression tests.
+
+Nhánh hardening cuối cùng bổ sung thêm:
+- `snowflake/05_data_quality.sql`: duplicate keys, mapping, reconciliation, orphan station, Q3 interval và complete site-hour checks.
+- Regression tests cho các SQL assets.
+- `LOAD_AUDIT` bổ sung RUN_ID, file size, SHA-256 và COPY query ID.
+- `-AppOnly` cho phép publish dashboard mà không rebuild marts.
+- SQL Q1–Q5 được tách sang `analytics_queries.py`.
+
+Các check và thay đổi mới trong nhánh hardening cần được thực thi trên Snowflake account sau khi merge; không xem là kết quả đã chạy cloud chỉ dựa trên việc code đã được commit.
+
+## 9. Hạn chế và phạm vi kết luận
+
+1. Static là session-based sampled measurements, không phải 24/7 telemetry.
+2. Missing hour/station-month không chứng minh thiết bị dừng hoạt động.
+3. 52 historical station IDs không bằng số EVSE đồng thời.
+4. Q3 post-last-current là khoảng từ sample current dương cuối đến API disconnect, không phải thời điểm kết thúc sạc thực.
+5. Q4 chỉ bao phủ các session có latest valid positive kWh request.
+6. Trung bình station-hour không được xem là tổng phụ tải đồng bộ của toàn JPL.
+
+## 10. Tài liệu tham khảo
+
+- ACN-Data dataset/API: https://ev.caltech.edu/dataset.html
+- ACN-Data Static: https://github.com/tongxin-li/ACN-Data-Static
+- Lee, Z. J., Li, T., & Low, S. H. (2019). *ACN-Data: Analysis and Applications of an Open EV Charging Dataset*, ACM e-Energy '19.
+- Snowflake Streamlit dependency management: https://docs.snowflake.com/en/developer-guide/streamlit/app-development/dependency-management
