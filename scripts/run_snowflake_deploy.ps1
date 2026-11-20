@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$IncludeStatic,
-    [switch]$SkipCoreLoad
+    [switch]$SkipCoreLoad,
+    [switch]$AppOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,6 +56,9 @@ if ($IncludeStatic) {
 }
 if ($SkipCoreLoad) {
     $PythonArgs += "--skip-core-load"
+}
+if ($AppOnly) {
+    $PythonArgs += "--app-only"
 }
 
 Push-Location $ProjectRoot

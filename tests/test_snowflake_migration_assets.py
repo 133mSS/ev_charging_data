@@ -43,12 +43,12 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("'2020-07-01 00:00:00'", sql)
         self.assertIn("'2020-12-01 00:00:00'", sql)
 
-    def test_q1_calendar_uses_gap_free_day_sequence_and_no_invalid_qualify(self):
-        app = read("snowflake/streamlit_app.py")
-        q1 = app[app.index("# Q1"):app.index("# Q2")]
-        self.assertIn("ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS DAY_OFFSET", q1)
-        self.assertIn("AVG_SESSIONS_PER_DAY", q1)
-        self.assertNotIn("QUALIFY LOCAL_DATE", q1)
+    def test_q1_calendar_uses_gap_free_day_sequence_and_vietnamese_weekdays(self):
+        queries = read("snowflake/analytics_queries.py")
+        self.assertIn("ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS DAY_OFFSET", queries)
+        self.assertIn("AVG_SESSIONS_PER_DAY", queries)
+        for day in ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]:
+            self.assertIn(day, queries)
 
     def test_q3_last_current_sample_is_within_api_connection_interval(self):
         sql = read("snowflake/03_power_marts.sql")
@@ -56,21 +56,48 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC >= F.CONNECTION_TIME_UTC", view_sql)
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC <= F.DISCONNECT_TIME_UTC", view_sql)
 
-    def test_q5_uses_the_selected_date_range_for_each_power_visual(self):
+    def test_q5_queries_are_parameterized_and_use_the_selected_power_window(self):
+        queries = read("snowflake/analytics_queries.py")
         app = read("snowflake/streamlit_app.py")
-        q5 = app[app.index("# Q5"):]
         self.assertGreaterEqual(
-            q5.count("WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)"),
+            queries.count("WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)"),
             3,
         )
-        self.assertIn("WHERE LOCAL_DATE >= TO_DATE(?) AND LOCAL_DATE < TO_DATE(?)", q5)
+        self.assertGreaterEqual(
+            queries.count("WHERE LOCAL_DATE >= TO_DATE(?) AND LOCAL_DATE < TO_DATE(?)"),
+            2,
+        )
+        self.assertIn('POWER_START_DATE = "2020-07-01"', app)
+        self.assertIn('POWER_END_DATE_EXCLUSIVE = "2020-12-01"', app)
+        self.assertIn("power_start_date = max(start_date, POWER_START_DATE)", app)
+        self.assertIn("station_scope = query(Q5_STATION_SCOPE_SQL)", app)
 
     def test_q4_selects_latest_request_before_filtering_positive_kwh(self):
-        app = read("snowflake/streamlit_app.py")
-        q4 = app[app.index("# Q4"):app.index("# Q5")]
+        queries = read("snowflake/analytics_queries.py")
+        q4 = queries[queries.index("Q4_LATEST_REQUESTS_SQL"):queries.index("Q4_TOTAL_SESSIONS_SQL")]
         self.assertIn("QUALIFY ROW_NUMBER()", q4)
         self.assertLess(q4.index("QUALIFY ROW_NUMBER()"), q4.index("L.KWH_REQUESTED > 0"))
         self.assertIn("MODIFIED_AT DESC NULLS LAST", q4)
+
+    def test_q3_uses_precise_last_positive_current_semantics(self):
+        sql = read("snowflake/03_power_marts.sql")
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn("MAX(IFF(S.CHARGING_CURRENT_A > 0, S.TIMESTAMP_UTC, NULL))", sql)
+        self.assertIn("mẫu dòng điện dương cuối", app)
+        self.assertIn("không phải thời điểm pin đầy", app)
+
+    def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
+        self.assertIn("request_coverage_pct", app)
+        self.assertIn('render_mode="svg"', app)
+
+    def test_dashboard_sql_is_deployed_as_a_sibling_module(self):
+        app = read("snowflake/streamlit_app.py")
+        deploy = read("scripts/deploy_snowflake.py")
+        self.assertIn("from analytics_queries import", app)
+        self.assertIn('query_module = ROOT / "snowflake" / "analytics_queries.py"', deploy)
+        self.assertIn("STREAMLIT SQL MODULE PUT", deploy)
 
     def test_streamlit_uses_snowflake_active_session_not_local_postgres(self):
         app = read("snowflake/streamlit_app.py")
@@ -155,6 +182,17 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertLess(app_assignment, app_create)
         self.assertNotIn("\\n    stage_path =", script)
 
+    def test_loader_records_run_id_hash_size_and_copy_query_id(self):
+        raw_sql = read("snowflake/01_raw_staging.sql")
+        deploy = read("scripts/deploy_snowflake.py")
+        self.assertIn("RUN_ID VARCHAR", raw_sql)
+        self.assertIn("SOURCE_SHA256 VARCHAR(64)", raw_sql)
+        self.assertIn("COPY_QUERY_ID VARCHAR", raw_sql)
+        self.assertIn("def sha256_file(", deploy)
+        self.assertIn("ETL RUN_ID:", deploy)
+        self.assertIn("FILE_SIZE_BYTES", deploy)
+        self.assertIn("COPY_QUERY_ID", deploy)
+
     def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn("CREATE OR REPLACE TEMPORARY TABLE", script)
@@ -166,6 +204,8 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn('cursor.execute("ROLLBACK")', script)
         self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
         self.assertIn("loaded <= 0", script)
+        self.assertIn("run_data_quality_checks(connection)", script)
+        self.assertIn('ROOT / "snowflake" / "05_data_quality.sql"', script)
 
     def test_read_only_snowflake_connection_smoke_test_exists(self):
         script = read("scripts/test_snowflake_connection.py")
@@ -180,6 +220,16 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         script = read("scripts/deploy_snowflake.py")
         self.assertIn('"--include-static"', script)
         self.assertIn("if args.include_static:", script)
+
+    def test_app_only_deploy_skips_data_and_mart_rebuild(self):
+        script = read("scripts/deploy_snowflake.py")
+        wrapper = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn('"--app-only"', script)
+        app_only = script[script.index('if args.app_only:'):script.index('run_id = str(uuid.uuid4())')]
+        self.assertIn("deploy_streamlit_app(connection)", app_only)
+        self.assertNotIn("run_sql_file(connection, \"snowflake/03_power_marts.sql\")", app_only)
+        self.assertIn("[switch]$AppOnly", wrapper)
+        self.assertIn('$PythonArgs += "--app-only"', wrapper)
 
 
 if __name__ == "__main__":

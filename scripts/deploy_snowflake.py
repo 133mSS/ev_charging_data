@@ -16,9 +16,11 @@ to an internal stage; it does not create another local copy.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import sys
+import uuid
 
 from dotenv import load_dotenv
 
@@ -135,11 +137,21 @@ def build_stage_directory(stage_folder: str) -> str:
     return f"{STAGE}/{folder}/"
 
 
+def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """Hash a source file incrementally without loading it into memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def upload_and_copy(
     connection,
     local_file: Path,
     stage_folder: str,
     target_table: str,
+    run_id: str,
     copy_columns: str | None = None,
 ) -> int:
     if not local_file.exists():
@@ -147,6 +159,7 @@ def upload_and_copy(
             f"Required processed JPL file not found: {local_file}"
         )
     size = local_file.stat().st_size
+    source_sha256 = sha256_file(local_file)
     if size > 250 * 1024**2:
         print(
             f"WARNING: {local_file.name} is {size / 1024**2:,.1f} MiB compressed. "
@@ -203,6 +216,7 @@ def upload_and_copy(
                 FORCE = TRUE
             """
         cursor.execute(copy_sql)
+        copy_query_id = cursor.sfqid
         results = cursor.fetchall()
         loaded = 0
         for row in results:
@@ -233,11 +247,68 @@ def upload_and_copy(
 
         cursor.execute(
             f"INSERT INTO {DATABASE}.RAW.LOAD_AUDIT "
-            "(SOURCE_FILE, TARGET_TABLE, ROWS_LOADED, STATUS) "
-            "VALUES (%s, %s, %s, %s)",
-            (local_file.name, target_table, loaded, "LOADED"),
+            "(RUN_ID, SOURCE_FILE, TARGET_TABLE, ROWS_LOADED, "
+            "FILE_SIZE_BYTES, SOURCE_SHA256, COPY_QUERY_ID, STATUS, DETAILS) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                run_id,
+                local_file.name,
+                target_table,
+                loaded,
+                size,
+                source_sha256,
+                copy_query_id,
+                "LOADED",
+                f"stage_path={stage_path}",
+            ),
         )
         return loaded
+
+
+def has_static_measurements(connection) -> bool:
+    """Return whether the full Static landing table contains measurement rows."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {DATABASE}.RAW.STG_STATIC_MEASUREMENTS"
+        )
+        row = cursor.fetchone()
+        return bool(row and row[0] > 0)
+
+
+def run_data_quality_checks(connection) -> None:
+    """Execute the warehouse reconciliation checks and stop on any failed check."""
+    sql_path = ROOT / "snowflake" / "05_data_quality.sql"
+    if not sql_path.exists():
+        raise FileNotFoundError(sql_path)
+    print(f"\n===== APPLY {sql_path.relative_to(ROOT)} =====", flush=True)
+    failures = []
+    result_rows = []
+    for result_cursor in connection.execute_string(
+        sql_path.read_text(encoding="utf-8"),
+        return_cursors=True,
+    ):
+        try:
+            if result_cursor.description:
+                result_rows = result_cursor.fetchall()
+        finally:
+            result_cursor.close()
+
+    for row in result_rows:
+        check_name, observed, expected, status, details = row
+        print(
+            f"{status}: {check_name} | observed={observed} | "
+            f"expected={expected} | {details}",
+            flush=True,
+        )
+        if status != "PASS":
+            failures.append(check_name)
+
+    if not result_rows:
+        raise RuntimeError("Snowflake data-quality script returned no check rows.")
+    if failures:
+        raise RuntimeError(
+            "Snowflake data-quality checks failed: " + ", ".join(failures)
+        )
 
 
 def deploy_streamlit_app(connection) -> None:
@@ -253,6 +324,15 @@ def deploy_streamlit_app(connection) -> None:
             "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
         )
         print("STREAMLIT SOURCE PUT:", cursor.fetchall())
+        query_module = ROOT / "snowflake" / "analytics_queries.py"
+        if not query_module.exists():
+            raise FileNotFoundError(query_module)
+        query_uri = quote_sql_string("file://" + query_module.resolve().as_posix())
+        cursor.execute(
+            f"PUT '{query_uri}' {stage_path} "
+            "AUTO_COMPRESS=FALSE OVERWRITE=TRUE PARALLEL=4"
+        )
+        print("STREAMLIT SQL MODULE PUT:", cursor.fetchall())
         environment_file = ROOT / "snowflake" / "environment.yml"
         if environment_file.exists():
             env_uri = quote_sql_string("file://" + environment_file.resolve().as_posix())
@@ -288,10 +368,23 @@ def main() -> None:
         action="store_true",
         help="Do not upload/reload API sessions and user inputs.",
     )
+    parser.add_argument(
+        "--app-only",
+        action="store_true",
+        help="Upload and publish Streamlit source only; do not rebuild data or marts.",
+    )
     args = parser.parse_args()
 
     connection = get_connection()
     try:
+        if args.app_only:
+            deploy_streamlit_app(connection)
+            print("\nStreamlit application-only deployment completed.")
+            print("Streamlit app: JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD")
+            return
+
+        run_id = str(uuid.uuid4())
+        print(f"ETL RUN_ID: {run_id}", flush=True)
         # Creates the database and warehouse, then selects both in the SQL file.
         run_sql_file(connection, "snowflake/00_bootstrap.sql")
         run_sql_file(connection, "snowflake/01_raw_staging.sql")
@@ -300,20 +393,24 @@ def main() -> None:
             upload_and_copy(
                 connection, CLEAN_SESSIONS_FILE, "sessions",
                 "STG_CHARGING_SESSIONS",
+                run_id,
             )
             upload_and_copy(
                 connection, CLEAN_USER_INPUTS_FILE, "user_inputs",
                 "STG_USER_INPUTS",
+                run_id,
             )
             upload_and_copy(
                 connection, SESSION_MAPPING_FILE, "session_mapping",
                 "STG_SESSION_MAPPING",
+                run_id,
             )
 
         if args.include_static:
             upload_and_copy(
                 connection, CLEAN_STATIC_FILE, "static",
                 "STG_STATIC_MEASUREMENTS",
+                run_id,
             )
         else:
             print(
@@ -333,6 +430,13 @@ def main() -> None:
         run_sql_file(connection, "snowflake/03_power_marts.sql")
 
         run_sql_file(connection, "snowflake/04_validation.sql")
+        if has_static_measurements(connection):
+            run_data_quality_checks(connection)
+        else:
+            print(
+                "Static measurements are not loaded; full Q3/Q5 data-quality gate is deferred.",
+                flush=True,
+            )
         deploy_streamlit_app(connection)
         print("\nSnowflake deployment/load sequence completed.")
         print("Streamlit app: JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD")

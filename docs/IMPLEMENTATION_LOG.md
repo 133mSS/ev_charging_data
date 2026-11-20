@@ -12,3 +12,17 @@
 - No raw JPL CSV.GZ measurement data or API JSON are bundled. JPL Static is ~587.8 MiB compressed and the API requires the user's private access token; fetch them locally before running transform/load.
 
 - Added JPL demand heatmap SQL and Plotly visualization (weekday × local hour); visual output remains pending the actual JPL API/Static load.
+
+
+## 2026-11-20 – Final project hardening
+
+- Consolidated README, implementation status, Snowflake runbook and migration report with the completed 18-November account-side deployment results.
+- Clarified session-level API/Static matching counts versus measurement-row counts.
+- Standardized Q3 wording around the last positive-current sample and API disconnect; avoided treating it as an exact charge-completion timestamp.
+- Added Q4 request coverage using valid latest requests divided by sessions in the selected period; full-snapshot coverage is 31,444 / 33,638 = 93.48%.
+- Restricted Q5 visuals to the Power analysis window (July–November 2020), displayed 2,240 / 3,673 site-hour observation coverage, and used a fixed 50-station population in the EVSE × month heatmap.
+- Updated monthly validation SQL to include unobserved station-month combinations at 0% calendar-hour coverage.
+- Moved dashboard SQL into snowflake/analytics_queries.py and added Vietnamese weekday labels and a complete 7-day × 24-hour Q1 grid.
+- Added snowflake/05_data_quality.sql and automated regression checks for keys, mapping, row reconciliation, dimension references, Q3 interval validity, and the complete UTC site-hour calendar.
+- Extended LOAD_AUDIT lineage with RUN_ID, file size, source SHA-256 and COPY query ID; added an app-only deployment option to avoid reloading Static or rebuilding marts during UI updates.
+- Added GitHub Actions branch matching for chore/**. The hardening branch is tested separately from the already-published baseline; final CI result is recorded in the pull request.

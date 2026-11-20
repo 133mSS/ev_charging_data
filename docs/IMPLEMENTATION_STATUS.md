@@ -1,59 +1,30 @@
-# JPL Migration – Implementation Status (Stage 01)
+# JPL EV Charging Analytics — Implementation Status
 
-**Date:** 2026-11-10  
-**Scope:** move the EV Charging Analytics project from `office001` to ACN-Data `jpl` / `Arroyo_Garage_01`.
+**Cập nhật:** 20/11/2026
 
-## Completed in this package
+Baseline đã hoàn thành triển khai dữ liệu và dashboard trên Snowflake ngày 18/11/2026. Tóm tắt số liệu, trạng thái từng hạng mục và các bước chốt nhánh hardening được quản lý trong:
 
-- Centralized all paths and the site scope in `project_config.py`; the project rejects a non-JPL `ACN_SITE_ID` to prevent accidental cross-site mixing.
-- Replaced the Office Static extractor/cleaner with JPL-specific ingestion and cleaning scripts.
-- Added sparse-checkout instructions for only `time series data/jpl/Arroyo_Garage_01`.
-- Added a reproducible Static inventory audit and a local environment/source preflight.
-- Reworked API pagination to follow the API-provided `next` link, detect repeated links, preserve prior successful snapshots during interrupted downloads, and show actionable 401/403 messages.
-- Changed the API audit to verify that one payload `siteID` is present without assuming it must equal the endpoint alias `jpl`.
-- Made optional ACN `userInputs` attributes nullable in staging/warehouse schemas; records without `modifiedAt` are not inserted into date/time-keyed request facts.
-- Made static-cleaning output atomic so an interrupted processing run does not replace the previous clean file with a partial result.
-- Corrected date-dimension generation to use `America/Los_Angeles`, consistent with session and measurement fact keys.
-- Kept the JPL PostgreSQL service isolated on port `5436`, with its own database and volume.
-- Added a JPL demand heatmap query and a dashboard focused on demand patterns, station ranking, connection behavior, observed power/coverage, and requested-versus-delivered energy.
-- Added seven unit tests for JPL filename parsing, session-key normalization, data transformations, and quality thresholds.
+- [Implementation Status Stage 02](IMPLEMENTATION_STATUS_STAGE02.md)
+- [Snowflake Migration Runbook](SNOWFLAKE_MIGRATION_RUNBOOK.md)
+- [Snowflake Migration Report](SNOWFLAKE_MIGRATION_REPORT_DRAFT.md)
+- [JPL Power Analytics Methodology](JPL_POWER_ANALYTICS_FINAL.md)
 
-## Verified source inventory
+## Trạng thái baseline
 
-The public ACN-Data Static repository README lists **27,723** JPL CSV.GZ time-series files under `time series data/jpl/Arroyo_Garage_01`, covering 2018–2020. A repository metadata inventory prepared for this project reports:
+- 33.638 API sessions; 41.207 userInputs.
+- 175.390.901 Static measurement rows.
+- 164.438.039 Static rows MATCHED; 10.952.862 STATIC_ONLY.
+- Snowflake RAW, WAREHOUSE, MART và ANALYTICS đã tạo.
+- Q1–Q5 đã chạy kiểm tra; Streamlit live version đã publish.
+- GitHub Actions trên baseline commit ngày 18/11/2026 thành công.
 
-- 27,723 JPL time-series files
-- 52 unique station identifiers in historical filenames
-- Date range in filenames: 2018-10-08 to 2020-12-02
-- Total compressed object size: 616,187,585 bytes (~587.6 MiB)
+## Hardening cuối cùng
 
-The 52 filename IDs represent historical identifiers in this snapshot. They are **not** a claim that 52 EVSEs were installed simultaneously. The ACN-Data site page currently describes JPL as having 50 EVSEs.
+Nhánh `chore/final-project-hardening` bổ sung:
+- Đồng bộ tài liệu.
+- Chuẩn hóa Q3/Q4/Q5 và tách SQL dashboard.
+- Data-quality SQL gate và regression tests.
+- ETL RUN_ID, file size, SHA-256 và COPY query ID.
+- Lệnh `-AppOnly` để cập nhật Streamlit mà không rebuild marts.
 
-The API session count and API–Static matching rate remain **unverified** until the user's API token is configured and the live JPL endpoint is extracted. Do not infer the API session count from the Static file count.
-
-## Verification performed in this environment
-
-- `python -m compileall -q .` — passed.
-- `python -m unittest discover -s tests -v` — 7 tests passed.
-- The supplied monthly and station inventory CSV files sum to 27,723 records each and agree with the inventory summary — passed.
-- Full ETL / database / Streamlit runtime was not executed here because this workspace does not contain the 27,723 raw Static files or the user's private ACN-Data API token, and Docker/PostgreSQL/Streamlit are not available in this execution environment.
-
-## Required next steps on the user's Windows machine
-
-1. Extract this ZIP and open PowerShell in the project root.
-2. Create `.env` from `.env.example` and set `ACN_API_TOKEN` locally. Do not send the token in chat or commit `.env` to Git.
-3. Run `scripts/clone_jpl_static_repo.ps1` to sparse-checkout the public JPL Static folder.
-4. Run `python scripts/preflight_jpl.py` and `python scripts/audit_jpl_static_inventory.py`.
-5. Run `python -m unittest discover -s tests -v`.
-6. Run `python run_pipeline.py --stage extract`, then `python scripts/audit_jpl_api_snapshot.py`.
-7. Run `python run_pipeline.py --stage transform`; review the API_ONLY / STATIC_ONLY / MATCHED counts and sample IDs before loading.
-8. Start the isolated database using `docker compose up -d`, then run `python run_pipeline.py --stage load`.
-9. Start the dashboard using `streamlit run dashboard/app.py`.
-
-Do not finalize claims about peak hours, utilization, load profile, or the number of matched sessions until those calculations have been run against the extracted JPL data.
-
-## Source references
-
-- ACN-Data dataset and API documentation: https://ev.caltech.edu/dataset.html
-- ACN-Data Static repository and JPL file count: https://github.com/tongxin-li/ACN-Data-Static
-- Original dataset paper: Lee, Z. J., Li, T., & Low, S. H. (2019), *ACN-Data: Analysis and Applications of an Open EV Charging Dataset*, ACM e-Energy '19.
+Các thay đổi trong nhánh này cần được merge, chạy quality checks và publish app-only trước khi coi là release cuối cùng.
