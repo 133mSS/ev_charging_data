@@ -2,7 +2,6 @@ name: jpl_ev_charging_analytics
 channels:
   - snowflake
 dependencies:
-  - python=3.11
   - streamlit
   - snowflake-snowpark-python
   - pandas
