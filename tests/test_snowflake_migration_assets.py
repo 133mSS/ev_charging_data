@@ -205,7 +205,7 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
         self.assertIn("loaded <= 0", script)
         self.assertIn("run_data_quality_checks(connection)", script)
-        self.assertIn("snowflake/05_data_quality.sql", script)
+        self.assertIn('ROOT / "snowflake" / "05_data_quality.sql"', script)
 
     def test_read_only_snowflake_connection_smoke_test_exists(self):
         script = read("scripts/test_snowflake_connection.py")
