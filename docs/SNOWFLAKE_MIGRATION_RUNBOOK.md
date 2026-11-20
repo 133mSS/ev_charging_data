@@ -1,193 +1,189 @@
 # Snowflake migration runbook — JPL EV Charging Analytics
 
-## 1. Objective
+**Cập nhật:** 20/11/2026  
+**Database:** `JPL_ANALYTICS` · **Warehouse:** `JPL_ETL_WH`  
+**Streamlit app:** `JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD`
 
-This branch contains a Snowflake-first deployment path for the JPL project. Snowflake is intended to host raw landing tables, the warehouse, analytical marts, and the Streamlit dashboard. GitHub remains the source-code repository.
+## 1. Trạng thái triển khai
 
-The migration preserves the existing cleaned outputs produced by the JPL pipeline. It does not regenerate synthetic data, replace the ACN-Data source, or delete the original PostgreSQL implementation.
+Lần triển khai đầy đủ ngày 18/11/2026 đã hoàn thành các bước:
+- Tạo database, năm schemas, X-Small warehouse, file format và internal stage.
+- Tạo RAW landing tables.
+- Nạp API sessions, userInputs, mapping và toàn bộ Static.
+- Xây dựng dimensions, facts, full-Static view và Power marts.
+- Chạy SQL validation Q1–Q5.
+- Tạo Streamlit app và publish live version.
 
-## 2. Source data used
+Các kết quả đã xác nhận từ log triển khai và ảnh Snowsight:
 
-The project has two genuine ACN-Data JPL feeds:
+| Hạng mục | Giá trị |
+|---|---:|
+| API sessions | 33.638 |
+| User input records | 41.207 |
+| Full Static measurement rows | 175.390.901 |
+| Static rows mapped to API | 164.438.039 |
+| Static rows not mapped to API (STATIC_ONLY) | 10.952.862 |
+| Q3 valid sessions | 25.647 |
+| Q3 median / P95 post-last-current | 124,6167 / 478,995 phút |
+| Q4 latest valid request sessions | 31.444 |
+| Q4 median delivered/requested | 60,08875% |
+| Q5 UTC hours with observation | 2.240 / 3.673 |
+| Streamlit live version | Published |
 
-1. **ACN-Data API session endpoint** — charging sessions and userInputs.
-2. **ACN-Data Static time-series archive** — electrical samples including current, pilot, voltage, charging state, cumulative energy and Power.
+**Grain cần phân biệt:** 164.438.039 và 10.952.862 là measurement rows; 25.647 là số phiên MATCHED.
 
-The local audit previously completed:
+Nhánh hardening hiện tại bổ sung code kiểm soát chất lượng, tách SQL và cải thiện giao diện. Những sửa đổi này chưa tự động được áp dụng vào app đang chạy trên Snowflake cho đến khi merge và thực hiện bước app-only deployment.
 
-- 33,638 API session records after refresh.
-- 27,723 compressed Static source files in the JPL inventory.
-- 175,390,901 cleaned Static measurement rows.
-- 14,427,675 Static rows in the July–November 2020 Power analysis window.
-- 50 station IDs with at least one Static observation in that window.
-- 32 stations with observations in all five months; 18 more were observed in one to four months; two historical IDs had no observation in the window.
+## 2. Kiến trúc
 
-Static files are per-session traces, not continuous 24/7 EVSE telemetry. Missing station-hours are not device outages. Do not replace missing Power with zero.
-
-## 3. Snowflake architecture
-
-| Layer | Snowflake object | Purpose |
+| Layer | Object | Grain / mục đích |
 |---|---|---|
-| Storage | RAW.JPL_RAW_STAGE | Internal landing stage for cleaned CSV/CSV.GZ files |
-| Raw | RAW.STG_CHARGING_SESSIONS | API session metadata |
-| Raw | RAW.STG_USER_INPUTS | User request history |
-| Raw | RAW.STG_STATIC_MEASUREMENTS | Full Static measurement archive |
-| Raw | RAW.STG_SESSION_MAPPING | MATCHED / API_ONLY / STATIC_ONLY relationship |
-| Warehouse | WAREHOUSE.DIM_* | Station, user, date and time dimensions |
-| Warehouse | WAREHOUSE.FACT_CHARGING_SESSIONS | One row per API charging session |
-| Warehouse | WAREHOUSE.FACT_USER_REQUESTS | One row per user-input update |
-| Warehouse | WAREHOUSE.FACT_STATIC_MEASUREMENTS | View over all Static rows, including STATIC_ONLY |
-| Mart | MART.SESSION_POST_CURRENT | Last positive-current sample to API disconnect interval |
-| Mart | MART.POWER_STATION_HOUR | EVSE × UTC-hour sample summary |
-| Mart | MART.POWER_STATION_MONTH | EVSE × local-month observation coverage |
-| Mart | MART.POWER_SITE_HOUR | Complete 3,673-hour UTC calendar grid |
-| Mart | MART.POWER_HOUR_OF_DAY_PROFILE | Distribution of station-hour Power by local hour |
-| App | ANALYTICS.JPL_EV_CHARGING_DASHBOARD | Streamlit Q1–Q5 application |
+| Stage | `RAW.JPL_RAW_STAGE` | Landing files CSV/CSV.GZ |
+| RAW | `STG_CHARGING_SESSIONS` | API session |
+| RAW | `STG_USER_INPUTS` | Mỗi lần userInputs cập nhật |
+| RAW | `STG_STATIC_MEASUREMENTS` | Mỗi phép đo Static |
+| RAW | `STG_SESSION_MAPPING` | Mapping giữa Static/API sessions |
+| RAW | `LOAD_AUDIT` | File, row count và lineage của từng lần nạp |
+| WAREHOUSE | `DIM_STATION`, `DIM_USER`, `DIM_DATE`, `DIM_TIME` | Dimensions |
+| WAREHOUSE | `FACT_CHARGING_SESSIONS` | Một dòng/session |
+| WAREHOUSE | `FACT_USER_REQUESTS` | Một dòng/input event |
+| WAREHOUSE | `FACT_STATIC_MEASUREMENTS` | View full Static, gồm cả unmatched rows |
+| MART | `SESSION_LAST_CURRENT`, `SESSION_POST_CURRENT` | Mốc current dương cuối và thời gian đến disconnect |
+| MART | `POWER_STATION_HOUR`, `POWER_STATION_MONTH` | EVSE-hour / EVSE-month |
+| MART | `POWER_SITE_HOUR` | Complete UTC-hour grid |
+| MART | `POWER_HOUR_OF_DAY_PROFILE` | Profile Power theo giờ |
+| ANALYTICS | `JPL_EV_CHARGING_DASHBOARD` | Streamlit Q1–Q5 |
 
-The full 175M-row Static feed remains in one raw table. The warehouse Static fact is a view that joins session mapping; it does not materialize a second full copy. Only the smaller analytical aggregates are materialized for dashboard responsiveness.
+Full Static chỉ được lưu một lần ở RAW; WAREHOUSE Static object là view. Các bảng tổng hợp được materialize để phục vụ dashboard.
 
-## 4. Trial-credit protection
+## 3. Nguồn dữ liệu và phạm vi
 
-The screenshot supplied by the project owner showed a Snowflake trial with 400 credits initially and 398 credits remaining at the time of the screenshot. This is a time-sensitive account snapshot, not a guarantee of current balance.
+- ACN-Data API site alias: `jpl`.
+- Static folder: `time series data/jpl/Arroyo_Garage_01`.
+- Local timezone: `America/Los_Angeles`.
+- Static snapshot inventory: 27.723 file, 52 historical station IDs, khoảng ngày 2018-10-08 đến 2020-12-02.
+- Power analysis window: 2020-07-01 đến trước 2020-12-01.
 
-The bootstrap creates JPL_ETL_WH as X-Small with AUTO_SUSPEND=60 and AUTO_RESUME=TRUE. Do not resize to Medium/Large or leave a warehouse running continuously for this project.
+Power được giới hạn ở tháng 07–11/2020 vì các trường Power/Voltage không được lưu đồng đều trong lịch sử sớm; tháng 06/2020 là giai đoạn chuyển tiếp và tháng 12 chỉ có dữ liệu đến ngày 02/12.
 
-Snowflake trial accounts run for 30 days or until free usage is exhausted, whichever comes first. At trial end the account is suspended and warehouses, loading and queries cannot run until the account is upgraded/reactivated. Storage also consumes free usage. Check the current Snowsight credit tile before running the full Static load.
+Static là dữ liệu đo theo phiên, không phải telemetry 24/7. Thiếu quan sát không có nghĩa EVSE hỏng hoặc Power = 0. Station-hour averages giữa các EVSE không bảo đảm đồng bộ timestamp; không cộng chúng thành tổng phụ tải đồng thời của toàn site.
 
-## 5. Files added
+## 4. Kiểm soát chi phí
 
-- snowflake/00_bootstrap.sql — database, schemas, X-Small warehouse, CSV file format and internal stage.
-- snowflake/01_raw_staging.sql — typed raw landing tables and load audit.
-- snowflake/02_warehouse.sql — dimensions, API facts, user-request facts and full-Static view.
-- snowflake/03_power_marts.sql — last-positive-current mart and Q5 station-hour/month/site-hour aggregates.
-- snowflake/04_validation.sql — data reconciliation and Q1–Q5 validation queries.
-- snowflake/streamlit_app.py — Snowflake-native Streamlit dashboard.
-- snowflake/environment.yml — dashboard runtime dependencies.
-- scripts/deploy_snowflake.py — local client that uploads existing processed files with PUT, loads them with COPY INTO, creates warehouse objects and publishes Streamlit.
-- requirements-snowflake.txt — optional local Snowflake Python connector dependency.
+Warehouse `JPL_ETL_WH` được cấu hình:
+- Size: X-SMALL.
+- AUTO_RESUME: TRUE.
+- AUTO_SUSPEND: 60 giây.
+- INITIALLY_SUSPENDED: TRUE.
 
-## 6. Credentials
+Không chạy full Static load chỉ để sửa UI/SQL dashboard. File Static nén có dung lượng lớn; mỗi lần chạy lại `-IncludeStatic` sẽ upload và COPY lại file đó.
 
-Copy values from .env.snowflake.example into the local .env. Do not commit the real .env.
+## 5. Credentials và môi trường
 
-Required for password authentication:
-- SNOWFLAKE_ACCOUNT
-- SNOWFLAKE_USER
-- SNOWFLAKE_PASSWORD
+Credentials chỉ lưu trong file local `.env`, không đưa lên GitHub hoặc ảnh chụp màn hình.
 
-Optional:
-- SNOWFLAKE_ROLE
-- SNOWFLAKE_WAREHOUSE (defaults to JPL_ETL_WH)
-- SNOWFLAKE_AUTHENTICATOR (use OAUTH_AUTHORIZATION_CODE for managed Google OIDC sign-in; use externalbrowser for SAML 2.0 SSO. In either browser-based SSO mode, SNOWFLAKE_PASSWORD is not required)
+Biến cần thiết tùy cơ chế xác thực:
+- `SNOWFLAKE_ACCOUNT`
+- `SNOWFLAKE_USER` (không cần truyền riêng khi dùng OAuth Authorization Code)
+- `SNOWFLAKE_PASSWORD` (chỉ cho password authentication)
+- `SNOWFLAKE_ROLE` (tùy chọn)
+- `SNOWFLAKE_WAREHOUSE=JPL_ETL_WH`
+- `SNOWFLAKE_AUTHENTICATOR` (nếu dùng SSO)
 
-The account identifier must be copied from Snowsight > account selector > View account details, not copied as the full browser URL. For an organization/account-name account, the connector value is organization-account_name; a legacy account locator is also supported. Do not include https://, a URL path, or .snowflakecomputing.com in SNOWFLAKE_ACCOUNT.
+`snowflake/environment.yml` dùng Conda/Snowflake Anaconda Channel. Python 3.11 được khai báo theo cú pháp Conda `python=3.11`; đây là cấu hình runtime Warehouse phù hợp với hướng dẫn Snowflake hiện hành. Không dùng cú pháp pip `python==3.11` trong file này.
 
-For `OAUTH_AUTHORIZATION_CODE`, the deployment code intentionally does not pass `SNOWFLAKE_USER`; Snowflake derives the identity from the browser-authorized access token. This avoids error 390309 when a cached/browser identity differs from a separately configured username. The read-only connection test prints `CURRENT_USER()` so you can confirm which Snowflake user was authenticated. The deployment script loads the repository-root .env with precedence over stale inherited Windows environment variables. Use the exact Snowflake login username, not an assumed display name. If you click the managed Sign in with Google option (OIDC), set SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE; the connector opens the browser authorization flow. If the account instead uses Google Workspace as a SAML identity provider, set SNOWFLAKE_AUTHENTICATOR=externalbrowser. The two protocols are not interchangeable.
+## 6. Vận hành
 
-Use a role with privileges to create databases, schemas, warehouses, stages, tables, views and Streamlit apps. Do not share credentials in screenshots or logs.
+### 6.1. Cập nhật riêng dashboard (khuyến nghị khi sửa UI/SQL)
 
-## 7. Deployment from Windows
+Sau khi merge nhánh hardening và pull code mới:
 
-First check available free space and make sure the current processed files already exist. The deploy script uploads the existing compressed files; it does not create another local copy.
+```powershell
+git pull
+.\scripts\run_snowflake_deploy.ps1 -AppOnly
+```
 
-The local deployment wrapper creates its own Python virtual environment under %LOCALAPPDATA% (normally on C:) and routes temporary files there, avoiding the nearly-full D: project drive. It installs Snowflake Connector 5.2+, which supports the Python 3.15 interpreter shown in the development environment.
+Lệnh `-AppOnly` chỉ:
+- Upload `streamlit_app.py`.
+- Upload `analytics_queries.py`.
+- Upload `environment.yml`.
+- Tạo lại Streamlit object và publish live version.
 
-Before deployment, test authentication without modifying Snowflake objects:
+Lệnh này không nạp dữ liệu, không chạy các SQL build warehouse/marts và không quét lại 175M Static rows.
 
-~~~powershell
-$py = "$env:LOCALAPPDATA\\JPL-Snowflake-Client\\venv\\Scripts\\python.exe"
-& $py .\\scripts\\test_snowflake_connection.py
-~~~
+### 6.2. Áp dụng thay đổi schema audit mà không nạp lại dữ liệu
 
-A successful check prints the current Snowflake user, role, account and region. It does not create a database or warehouse. For managed Google OIDC sign-in, set `SNOWFLAKE_AUTHENTICATOR=OAUTH_AUTHORIZATION_CODE` in the project-root `.env`; for SAML Google Workspace use `externalbrowser`. OIDC and SAML are different protocols.
+Nhánh hardening bổ sung các cột `RUN_ID`, `FILE_SIZE_BYTES`, `SOURCE_SHA256`, `COPY_QUERY_ID` cho `RAW.LOAD_AUDIT`.
 
-For a low-risk first pass, deploy the database objects and API session inputs without the 175M-row Static load:
+Có thể chạy `snowflake/01_raw_staging.sql` trong Snowsight để áp dụng các lệnh `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Các lệnh này không tải lại dữ liệu.
 
-~~~powershell
-.\scripts\run_snowflake_deploy.ps1
-~~~
+Sau đó chạy `snowflake/05_data_quality.sql` trong Snowsight để kiểm tra uniqueness, mapping, reconciliation và complete site-hour grid.
 
-This loads API sessions, userInputs and the session mapping, then creates the core warehouse and the Streamlit app. Q1–Q4 can be checked; Q5 requires the Static load and Power marts.
+### 6.3. Full data deployment
 
-After checking the Snowsight credit balance, load the full Static source and build Power marts:
+Chỉ chạy khi thực sự muốn nạp lại toàn bộ nguồn đã xử lý:
 
-~~~powershell
+```powershell
+.\scripts\run_snowflake_deploy.ps1 -IncludeStatic
+```
+
+Nếu API tables đã đúng và chỉ muốn nạp lại Static:
+
+```powershell
 .\scripts\run_snowflake_deploy.ps1 -IncludeStatic -SkipCoreLoad
-~~~
+```
 
-The Static file is uploaded directly from its existing local path to the Snowflake internal stage; AUTO_COMPRESS=FALSE avoids creating an extra compressed copy. If the compressed file is larger than 250 MiB, the loader prints a performance warning. Snowflake PUT can upload larger files in chunks, but COPY throughput is generally better with multiple 100–250 MiB compressed files. The current loader proceeds with the existing file and does not create local split copies.
+Script nạp file qua PUT/COPY INTO, dùng temporary table và chỉ thay thế bảng RAW sau khi COPY thành công. Mỗi lần chạy tạo một `RUN_ID`; file audit lưu size, SHA-256 và COPY query ID.
 
-The second command uses --skip-core-load so it does not truncate/reload the API sessions, userInputs or mapping tables from the first run. The command performs:
-1. Bootstrap database and warehouse (idempotent).
-2. Preserve API sessions, userInputs and session mapping from the first run.
-3. Upload + COPY full Static measurements.
-4. Rebuild dimensions/facts/views and Power marts.
-6. Create dimensions/facts/views.
-7. Optional heavy Power mart build.
-8. Run validation queries.
-9. Upload Streamlit source and publish the live app.
+## 7. Validation
 
-Re-running reloads the RAW staging tables before COPY. It is a full refresh of these JPL RAW inputs; it does not delete local files or the old PostgreSQL database.
+Chạy trong Snowsight theo thứ tự:
 
-### Recovery after API-first load succeeds but Streamlit publish fails
+1. `snowflake/04_validation.sql` — row counts và kết quả Q1–Q5.
+2. `snowflake/05_data_quality.sql` — bảng check_name, observed_value, expected_value, status và details.
 
-If the API sessions, userInputs, mapping, warehouse SQL and validation have already completed, but only the final Streamlit deployment step failed, do not reload the three API input files. After pulling the latest main branch, rerun:
+Các check mới gồm:
+- Duplicate session key.
+- Duplicate (session_id, input_id) request key.
+- Duplicate Static mapping key.
+- Static row reconciliation.
+- Unmapped Static rows.
+- Orphan station keys.
+- Invalid post-last-current intervals.
+- Đủ 3.673 UTC hours và không trùng UTC hour key.
+- Session/Static facts không rỗng.
 
-~~~powershell
-.\scripts\run_snowflake_deploy.ps1 -SkipCoreLoad
-~~~
+Data-quality gate đầy đủ chỉ áp dụng khi Static đã được nạp. API-first deployment có thể chạy trước; khi Static chưa có dữ liệu, các check phụ thuộc Static được trì hoãn.
 
-This reruns idempotent bootstrap/schema/warehouse/validation steps and retries the Streamlit source upload and app publication. It does not upload Static measurements unless `-IncludeStatic` is explicitly supplied. Confirm the final "Streamlit live version published" message before treating the dashboard as deployed.
+### Diễn giải coverage
 
-## 8. Manual Snowsight alternative
+- Power row coverage = non-null Power measurement rows / all Static rows trong cửa sổ.
+- Site-hour observation coverage = UTC hours có ít nhất một quan sát / 3.673 UTC hours.
+- 100% Power row coverage không đồng nghĩa 100% temporal coverage.
+- 2.240 / 3.673 = khoảng 61,0% site-hour observation coverage.
 
-If the local Snowflake Python connector cannot be installed, execute the SQL files in order from Snowsight Worksheets:
+Truy vấn tổng hợp station-month trong `04_validation.sql` sử dụng fixed 50-station population. Station-month không có row quan sát được đưa vào mẫu số với coverage 0%, giúp kết quả tương thích với heatmap dashboard.
 
-1. snowflake/00_bootstrap.sql
-2. snowflake/01_raw_staging.sql
-3. Upload CSV/CSV.GZ files to @JPL_ANALYTICS.RAW.JPL_RAW_STAGE using Snowsight's Upload Local Files or the Snowflake CLI.
-4. Run appropriate COPY INTO commands for each RAW table.
-5. snowflake/02_warehouse.sql
-6. snowflake/03_power_marts.sql
-7. snowflake/04_validation.sql
+## 8. Kiểm thử repository
 
-For dashboard deployment, upload snowflake/streamlit_app.py and snowflake/environment.yml to @JPL_ANALYTICS.RAW.JPL_RAW_STAGE/app, then run:
+Từ repository root:
 
-~~~sql
-CREATE OR REPLACE STREAMLIT JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD
-  FROM '@JPL_ANALYTICS.RAW.JPL_RAW_STAGE/app'
-  MAIN_FILE = 'streamlit_app.py'
-  QUERY_WAREHOUSE = JPL_ETL_WH;
+```powershell
+python -m unittest discover -s tests -v
+python -m py_compile scripts/deploy_snowflake.py snowflake/streamlit_app.py snowflake/analytics_queries.py
+```
 
-ALTER STREAMLIT JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD
-  ADD LIVE VERSION FROM LAST;
-~~~
+GitHub Actions chạy compile và unit/regression tests trên push/PR. CI không thay thế SQL smoke test trên account Snowflake.
 
-## 9. Q1–Q5 coverage
+## 9. Bằng chứng triển khai
 
-| Question | Snowflake analysis |
-|---|---|
-| Q1 — Charging demand by time | Local weekday × start hour heatmap and normalized weekday/weekend averages per calendar day |
-| Q2 — EVSE usage differences | Session counts, total kWh, mean kWh/session and connection duration by station |
-| Q3 — Connection duration and retained connection after charging | API connection duration plus Static last sample with Charging Current > 0, joined to API disconnect time |
-| Q4 — Requested versus delivered energy | Latest userInputs row per session selected first, then valid positive kWh requests compared with session kWhDelivered |
-| Q5 — Power and temporal coverage | Full Static EVSE-hour Power summaries, EVSE-month coverage and complete UTC site-hour grid |
+Nên lưu trong thư mục `docs/evidence/snowflake/`:
+1. Snowsight database/schema và object list.
+2. Query result đối soát 33.638 sessions, 41.207 userInputs, 175.390.901 Static rows.
+3. Query result Q3, Q4, Q5.
+4. Kết quả toàn bộ `05_data_quality.sql`.
+5. Streamlit dashboard Q1–Q5.
+6. GitHub Actions run cuối cùng.
+7. Load audit thể hiện RUN_ID, source file, row count, SHA-256 và COPY query ID.
 
-Q3 uses actual Static charging_current_a > 0 timestamps for the last-positive-current measure. It does not substitute the API doneChargingTime field for that measured timestamp.
-
-Q4 uses the latest request event before filtering invalid/missing kwh_requested, avoiding accidental fallback to an older input event.
-
-## 10. Required validation and report evidence
-
-Do not state that Snowflake data migration is complete until these have been executed successfully in the user's account.
-
-Capture:
-1. Snowsight trial credit tile before and after the migration (do not expose account identifiers).
-2. SHOW TABLES IN SCHEMA JPL_ANALYTICS.RAW and RAW row counts.
-3. MART.V_LOAD_RECONCILIATION with API, userInput and full Static counts.
-4. MART.POWER_SITE_HOUR count = 3,673 and hours-with/without-observation counts.
-5. Q1–Q5 dashboard screenshot with populated metrics.
-6. Snowflake query history showing the load and mart build completed.
-7. The current Snowflake trial balance and expiry date before final submission.
-
-Do not claim Snowflake-hosted ETL, warehouse or dashboard has run until the user's Snowsight account shows these outputs. The repository implementation is prepared; the account-side deployment and data load are the remaining execution steps.
+Không chụp credentials, token hoặc thông tin đăng nhập trong ảnh minh chứng.
