@@ -331,15 +331,24 @@ try:
                 "DELIVERED_VS_REQUESTED_PCT": "Thực nhận/yêu cầu (%)",
             },
         )
-        # A single color keeps the chart focused on the relationship between
-        # requested and delivered energy; EVSE identity remains available on hover.
+        # Use small, faint markers: tens of thousands of sessions overlap in the
+        # central range, so opacity communicates density without creating a solid blob.
+        # EVSE identity remains available in the hover tooltip, not as a color category.
         fig.update_traces(
             marker={
                 "color": "#4C8BF5",
-                "size": 6,
-                "opacity": 0.45,
+                "size": 3,
+                "opacity": 0.08,
                 "line": {"width": 0},
-            }
+            },
+            hovertemplate=(
+                "<b>EVSE: %{hovertext}</b><br>"
+                "Mã phiên: %{customdata[0]}<br>"
+                "Yêu cầu: %{x:.2f} kWh<br>"
+                "Thực nhận: %{y:.2f} kWh<br>"
+                "Thực nhận/yêu cầu: %{customdata[1]:.1f}%"
+                "<extra></extra>"
+            ),
         )
         fig.add_shape(
             type="line",
@@ -349,23 +358,23 @@ try:
             y1=lim,
             line={"color": "#F59E0B", "dash": "dash", "width": 2},
         )
-        # Equal axis ranges and scale ensure the y=x reference is visually truthful.
-        fig.update_xaxes(range=[0, lim], title="Năng lượng yêu cầu (kWh)")
-        fig.update_yaxes(
-            range=[0, lim],
-            title="Năng lượng thực nhận (kWh)",
-            scaleanchor="x",
-            scaleratio=1,
-        )
+        # Keep both energy axes non-negative and within the observed data range.
+        # Do not lock their pixel aspect ratio: on a wide dashboard that expands X
+        # into negative values, even though requested energy cannot be negative.
+        fig.update_xaxes(range=[0, lim], title="Năng lượng yêu cầu (kWh)", rangemode="tozero")
+        fig.update_yaxes(range=[0, lim], title="Năng lượng thực nhận (kWh)", rangemode="tozero")
+        fig.update_layout(height=620, hovermode="closest")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
-            "Mỗi điểm đại diện một phiên sạc; tất cả điểm dùng cùng màu để dễ quan sát mật độ. "
-            "Di chuột lên điểm để xem mã EVSE, mã phiên và tỷ lệ thực nhận/yêu cầu. "
-            "Đường nét đứt y = x biểu thị mức thực nhận bằng yêu cầu: điểm dưới đường là "
-            "thực nhận thấp hơn yêu cầu, điểm trên đường là cao hơn. "
-            "Chọn userInputs mới nhất theo modified_at và input_id trước khi lọc "
-            "kWh_requested > 0. Độ bao phủ = số phiên có yêu cầu kWh hợp lệ / tổng phiên "
-            "trong khoảng lọc. Tỷ lệ thực nhận/yêu cầu là so sánh mô tả, không chứng minh nguyên nhân chênh lệch."
+            "Mỗi điểm đại diện một phiên sạc; điểm nhỏ và trong suốt giúp thể hiện mật độ "
+            "phiên ở các vùng chồng lấn. Di chuột lên điểm để xem mã EVSE, mã phiên và "
+            "các giá trị kWh. Đường nét đứt y = x là mốc thực nhận bằng yêu cầu: điểm dưới "
+            "đường có thực nhận thấp hơn yêu cầu, điểm trên đường có thực nhận cao hơn. "
+            "Hai trục bắt đầu từ 0; đường tham chiếu được xác định theo giá trị kWh, không "
+            "dùng màu để phân nhóm EVSE. Chọn userInputs mới nhất theo modified_at và "
+            "input_id trước khi lọc kWh_requested > 0. Độ bao phủ = số phiên có yêu cầu "
+            "kWh hợp lệ / tổng phiên trong khoảng lọc. Đây là so sánh mô tả, không chứng "
+            "minh nguyên nhân chênh lệch."
         )
     else:
         d.metric("Trung vị thực nhận/yêu cầu", "N/A")
