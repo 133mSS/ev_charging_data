@@ -347,12 +347,23 @@ def main() -> None:
         action="store_true",
         help="Do not upload/reload API sessions and user inputs.",
     )
+    parser.add_argument(
+        "--app-only",
+        action="store_true",
+        help="Upload and publish Streamlit source only; do not rebuild data or marts.",
+    )
     args = parser.parse_args()
 
-    run_id = str(uuid.uuid4())
-    print(f"ETL RUN_ID: {run_id}", flush=True)
     connection = get_connection()
     try:
+        if args.app_only:
+            deploy_streamlit_app(connection)
+            print("\nStreamlit application-only deployment completed.")
+            print("Streamlit app: JPL_ANALYTICS.ANALYTICS.JPL_EV_CHARGING_DASHBOARD")
+            return
+
+        run_id = str(uuid.uuid4())
+        print(f"ETL RUN_ID: {run_id}", flush=True)
         # Creates the database and warehouse, then selects both in the SQL file.
         run_sql_file(connection, "snowflake/00_bootstrap.sql")
         run_sql_file(connection, "snowflake/01_raw_staging.sql")
