@@ -92,6 +92,18 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("request_coverage_pct", app)
         self.assertIn('render_mode="svg"', app)
 
+    def test_warehouse_runtime_uses_builtin_python_without_installing_python_package(self):
+        environment = read("snowflake/environment.yml")
+        deploy = read("scripts/deploy_snowflake.py")
+        dependency_lines = [
+            line.strip()
+            for line in environment.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertNotIn("  - python=3.11", environment)
+        self.assertNotIn("  - python==3.11", environment)
+        self.assertIn("RUNTIME_NAME = 'SYSTEM$WAREHOUSE_RUNTIME'", deploy)
+
     def test_dashboard_sql_is_deployed_as_a_sibling_module(self):
         app = read("snowflake/streamlit_app.py")
         deploy = read("scripts/deploy_snowflake.py")
