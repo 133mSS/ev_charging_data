@@ -281,23 +281,34 @@ def run_data_quality_checks(connection) -> None:
     if not sql_path.exists():
         raise FileNotFoundError(sql_path)
     print(f"\n===== APPLY {sql_path.relative_to(ROOT)} =====", flush=True)
-    with connection.cursor() as cursor:
-        cursor.execute(sql_path.read_text(encoding="utf-8"))
-        rows = cursor.fetchall()
-        failures = []
-        for row in rows:
-            check_name, observed, expected, status, details = row
-            print(
-                f"{status}: {check_name} | observed={observed} | "
-                f"expected={expected} | {details}",
-                flush=True,
-            )
-            if status != "PASS":
-                failures.append(check_name)
-        if failures:
-            raise RuntimeError(
-                "Snowflake data-quality checks failed: " + ", ".join(failures)
-            )
+    failures = []
+    result_rows = []
+    for result_cursor in connection.execute_string(
+        sql_path.read_text(encoding="utf-8"),
+        return_cursors=True,
+    ):
+        try:
+            if result_cursor.description:
+                result_rows = result_cursor.fetchall()
+        finally:
+            result_cursor.close()
+
+    for row in result_rows:
+        check_name, observed, expected, status, details = row
+        print(
+            f"{status}: {check_name} | observed={observed} | "
+            f"expected={expected} | {details}",
+            flush=True,
+        )
+        if status != "PASS":
+            failures.append(check_name)
+
+    if not result_rows:
+        raise RuntimeError("Snowflake data-quality script returned no check rows.")
+    if failures:
+        raise RuntimeError(
+            "Snowflake data-quality checks failed: " + ", ".join(failures)
+        )
 
 
 def deploy_streamlit_app(connection) -> None:
