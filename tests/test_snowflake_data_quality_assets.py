@@ -34,6 +34,17 @@ class TestSnowflakeDataQualityAssets(unittest.TestCase):
         self.assertIn("3673", sql)
         self.assertIn("'DUPLICATE_POWER_SITE_HOUR_KEYS'", sql)
 
+    def test_q3_interval_check_joins_fact_for_connection_timestamp(self):
+        sql = read("snowflake/05_data_quality.sql")
+        block = sql[
+            sql.index("'INVALID_POST_LAST_CURRENT_INTERVALS'"):
+            sql.index("'POWER_SITE_HOUR_COUNT'")
+        ]
+        self.assertIn("INNER JOIN WAREHOUSE.FACT_CHARGING_SESSIONS S", block)
+        self.assertIn("S.CONNECTION_TIME_UTC", block)
+        self.assertIn("F.DISCONNECT_TIME_UTC", block)
+        self.assertNotIn("F.CONNECTION_TIME_UTC", block)
+
     def test_quality_sql_emits_explicit_pass_fail_rows(self):
         sql = read("snowflake/05_data_quality.sql")
         self.assertIn("AS STATUS", sql)
