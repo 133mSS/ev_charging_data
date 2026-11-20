@@ -1,143 +1,87 @@
-# JPL Migration – Stage 02 implementation status
+# JPL EV Charging Analytics — Implementation Status
 
-## 1. Verified local data snapshot
+**Cập nhật:** 20/11/2026  
+**Repository:** https://github.com/133mSS/ev_charging_data  
+**Nhánh triển khai baseline:** main  
+**Trạng thái baseline:** đã hoàn thành full Static load, Snowflake warehouse/marts, Q1–Q5 validation và Streamlit live publication ngày 18/11/2026.
 
-The following figures came from the user's local Windows execution and are not synthetic:
+## 1. Trạng thái tổng quan
 
-- API snapshot: 33,638 unique session IDs after refresh.
-- Static repository inventory: 27,723 CSV.GZ files, 52 historical filename station IDs, 2018-10-08 to 2020-12-02.
-- Full cleaned Static file: 175,390,901 measurement rows.
-- API–Static mapping after refresh: 25,647 MATCHED, 1,978 STATIC_ONLY, 7,991 API_ONLY.
-- Full-history row-level Power coverage: about 8.81%; Power/Voltage were not retained uniformly over the complete history.
-- July–November 2020 selected-window audit over all Static rows: 14,427,675 rows, 18,218 station-hour buckets, 50 station IDs, and 100% row-level Power coverage among the rows present.
-- No UTC hour in that window had Power observations from all 50 station IDs.
+| Hạng mục | Trạng thái | Bằng chứng |
+|---|---|---|
+| ACN-Data API extraction | Hoàn thành | 33.638 sessions |
+| ACN-Data Static inventory | Hoàn thành | 27.723 files, 52 historical station IDs |
+| Python/Pandas transform | Hoàn thành | 175.390.901 cleaned measurements |
+| API–Static session mapping | Hoàn thành | 25.647 MATCHED, 7.991 API_ONLY, 1.978 STATIC_ONLY |
+| Snowflake RAW load | Hoàn thành | 33.638 sessions, 41.207 userInputs, 175.390.901 Static rows |
+| Star-schema warehouse | Hoàn thành | 4 dimensions, 2 facts và full-Static view |
+| Analytics marts | Hoàn thành | Q3 post-current và Q5 Power marts |
+| Q1–Q5 SQL validation | Hoàn thành | Query results ghi nhận trong deployment output |
+| Streamlit app | Hoàn thành | Live version published và dashboard hiển thị trong Snowsight |
+| GitHub Actions | Hoàn thành | CI success trên baseline commit |
+| Data-quality gate mở rộng | Đã bổ sung trong nhánh hardening | Cần chạy sau khi merge trên account |
+| ETL run lineage | Đã bổ sung trong nhánh hardening | RUN_ID, file size, SHA-256, COPY query ID |
+| Dashboard SQL modularization | Đã bổ sung trong nhánh hardening | analytics_queries.py |
+| App-only deployment | Đã bổ sung trong nhánh hardening | -AppOnly |
 
-## 2. EVSE population decision
+## 2. Kết quả dữ liệu và phân tích
 
-The 50 station IDs with at least one observation during July–November 2020 are the descriptive Power population.
+### Dữ liệu Snowflake
 
-- 32 station IDs have observations in all five months and form the balanced month-comparison cohort.
-- 18 station IDs have observations in one to four months. The user's per-month diagnostic found 100% Power row coverage in every observed month for these stations.
-- 2 station IDs have no observations in the selected five-month window.
+| Dataset | Rows |
+|---|---:|
+| API sessions | 33.638 |
+| User inputs | 41.207 |
+| Static all | 175.390.901 |
+| Static matched rows | 164.438.039 |
+| Static-only rows | 10.952.862 |
 
-Missing station-month observations are not evidence that an EVSE was inactive or faulty. The selector now reports NOT_OBSERVED_IN_ALL_FIVE_MONTHS, includes the missing months, and retains the legacy active_months column only as a compatibility alias. That alias counts months with records; it is not device uptime.
+Static reconciliation: 164.438.039 + 10.952.862 = 175.390.901.
 
-## 3. Temporal coverage findings
+### Q1–Q5
 
-The user's current 50-station station-month summary:
+| Câu hỏi | Kết quả chính |
+|---|---|
+| Q1 | Dashboard có heatmap thứ × giờ và profile ngày thường/cuối tuần |
+| Q2 | EVSE dẫn đầu về năng lượng: 1-1-194-826 (15.979,49 kWh); nhiều phiên nhất: 1-1-178-823 (1.449 phiên) |
+| Q3 | 25.647 phiên hợp lệ; median 124,6167 phút; P95 478,995 phút |
+| Q4 | 31.444 latest valid requests; median delivered/requested 60,08875%; đạt ≥90% là 14,2% |
+| Q5 | 14.427.675 Static rows trong cửa sổ; 50 EVSE; 18.218 station-hour buckets; 2.240/3.673 UTC hours có quan sát |
 
-| Month | Stations with observations | Mean station-hour observation coverage | Median | Maximum |
-|---|---:|---:|---:|---:|
-| 2020-07 | 37 | 9.08% | 2.96% | 31.72% |
-| 2020-08 | 45 | 11.43% | 7.19% | 35.22% |
-| 2020-09 | 40 | 8.23% | 4.10% | 32.64% |
-| 2020-10 | 46 | 12.28% | 7.39% | 42.34% |
-| 2020-11 | 41 | 8.49% | 3.33% | 36.62% |
+Q4 request coverage trên toàn bộ 33.638 sessions là 93,48%.
 
-These are observation-presence rates, not EVSE uptime. Static files are per-session traces, not continuous 24/7 telemetry.
+Q5 Power row coverage 100% là tỷ lệ dòng Static đã có có giá trị Power. Site-hour observation coverage là 2.240/3.673 = 61,0%. Hai chỉ số có mẫu số khác nhau.
 
-The earlier site-hour CSV contained only the 2,240 hours with at least one observation. The temporal-audit code has since been updated to write a complete 3,673-UTC-hour grid, including 1,433 hours with no observations from any station. The updated script must be rerun locally to regenerate this corrected output and its summary denominators.
+## 3. Các giới hạn diễn giải
 
-A sum of station-hour mean Power values is not synchronized facility load. The script now names this descriptive statistic sum_station_hour_mean_power_kw and documents the limitation.
+- JPL Static là phép đo theo phiên, không phải telemetry 24/7.
+- Missing Static/Power observation không được điền thành 0 và không được xem là bằng chứng EVSE hỏng.
+- Historical station IDs không đại diện cho số EVSE hoạt động cùng lúc.
+- Q3 đo khoảng từ timestamp cuối cùng có charging_current_a > 0 đến API disconnect; không khẳng định thời điểm pin đầy.
+- Q4 là so sánh mô tả với userInputs mới nhất, không tự xác định nguyên nhân chênh lệch.
+- Station-hour averages không được cộng để kết luận tổng phụ tải đồng thời của toàn site.
 
-## 4. Implemented in this branch
+## 4. Nhánh hardening cuối cùng
 
-- scripts/select_jpl_power_analysis_scope.py: selects the 32-station balanced cohort and reports missing observation months explicitly.
-- scripts/audit_jpl_temporal_coverage.py: chunked audit of the full cleaned Static dataset, plus a complete UTC-hour grid with no-observation hours included.
-- scripts/audit_jpl_api_static_hourly_alignment.py: expands API connection intervals into UTC-hour buckets and compares them with full-Static measurements by station and hour. It keeps MATCHED, API_ONLY, STATIC_ONLY and unmapped evidence separate.
-- dashboard/power_analytics.py: CSV-driven Streamlit page for full-Static Power and coverage analysis, with optional API–Static alignment displays.
-- dashboard/app.py: clarifies that the original warehouse Power section is based on API-matched Static measurements and must not be interpreted as synchronized facility demand.
-- scripts/run_jpl_power_analytics.ps1: one-command Windows runner for tests, temporal audit and API–Static alignment.
-- tests/test_jpl_temporal_coverage.py and tests/test_jpl_api_static_hourly_alignment.py: unit tests for DST denominators, missing-month selection, complete site-hour grids, and API interval splitting.
-- .github/workflows/python-tests.yml: runs unit tests on pushes to this branch and pull requests to main.
-- docs/JPL_POWER_ANALYTICS_FINAL.md: final methodology, definitions, result summary, runbook and evidence checklist.
+Nhánh `chore/final-project-hardening` thực hiện các thay đổi bổ sung:
+- Đồng bộ README, Runbook, Migration Report và Implementation Status.
+- Chuyển SQL Q1–Q5 sang `snowflake/analytics_queries.py`.
+- Chỉnh Q3 labels, thêm Q4 request coverage, giới hạn Q5 trong cửa sổ 07–11/2020.
+- Giữ cố định population 50 EVSE khi dựng heatmap EVSE × month.
+- Sửa monthly validation SQL để dùng complete station-month grid và mẫu số cố định 50 EVSE.
+- Thêm `snowflake/05_data_quality.sql` và regression tests.
+- Mở rộng `LOAD_AUDIT` với RUN_ID, file size, SHA-256 và COPY query ID.
+- Thêm `-AppOnly` để publish dashboard mà không nạp dữ liệu hoặc rebuild marts.
+- Bổ sung nhánh CI `chore/**`.
 
-## 5. What is validated and what remains
+Các thay đổi ở nhánh hardening chưa được tính là đã áp dụng vào Snowflake account cho tới khi merge và deploy app/schema tương ứng.
 
-Validated:
-- The user's full-Static temporal audit has completed over all 175,390,901 records.
-- The updated unit-test suite, including API interval ingestion and Static chunk-scan tests, passed in GitHub Actions at commit 3c4fdbe1128dc613eafc04fce9294ac2f6b82c0a.
-- The selector distinguishes missing observation months from missing Power values.
+## 5. Việc cần hoàn tất khi merge nhánh hardening
 
-Must still be executed on the user's local dataset after pulling the latest branch:
-1. Rerun the updated full-Static temporal audit so the site-hour CSV includes all 3,673 hours.
-2. Run scripts/audit_jpl_api_static_hourly_alignment.py and inspect its output summary and CSV.
-3. Launch dashboard/power_analytics.py and verify the charts against local artifacts.
-4. Capture the evidence screenshots listed in docs/JPL_POWER_ANALYTICS_FINAL.md.
+1. Merge PR của `chore/final-project-hardening` vào `main`.
+2. Chạy `snowflake/01_raw_staging.sql` trên Snowsight để bổ sung các cột lineage cho LOAD_AUDIT (các ALTER là idempotent).
+3. Chạy `snowflake/04_validation.sql` và `snowflake/05_data_quality.sql`; tất cả data-quality checks phải là PASS.
+4. Chạy `.scriptsun_snowflake_deploy.ps1 -AppOnly` để publish dashboard code mới mà không nạp lại 175M Static rows.
+5. Chạy GitHub Actions và chụp ảnh Snowsight Q1–Q5 sau khi publish.
 
-Not claimed as complete:
-- The API–Static hourly alignment has not yet been run against the user's local files.
-- The new Power dashboard has not yet been manually verified in the user's Windows environment.
-- A PostgreSQL aggregate fact table for full-Static Power has not been added. The current warehouse fact remains matched-only and serves session reconciliation/QA.
-
-## 6. Recommended execution on Windows
-
-From the repository root, after confirming the working tree is safe to update:
-
-~~~powershell
-git status --short
-git pull origin feature/jpl-temporal-power-audit
-~~~
-
-Then:
-
-~~~powershell
-.\scripts\run_jpl_power_analytics.ps1
-~~~
-
-For a lower-memory run:
-
-~~~powershell
-.\scripts\run_jpl_power_analytics.ps1 -ChunkSize 250000
-~~~
-
-To launch the Power dashboard automatically after the two audit scripts:
-
-~~~powershell
-.\scripts\run_jpl_power_analytics.ps1 -LaunchDashboard
-~~~
-
-
-## 7. Snowflake migration implementation (new branch content)
-
-### Implemented in GitHub
-
-- Snowflake bootstrap: database, schemas, X-Small auto-suspending warehouse, internal stage and CSV file format.
-- RAW landing tables for API sessions, userInputs, complete Static measurements and session mapping.
-- Warehouse dimensions, API charging-session fact, user-request fact and a full-Static view that retains STATIC_ONLY sessions.
-- Power marts for the last positive current measurement, station-hour Power, station-month observation coverage, complete UTC site-hour calendar and hour-of-day profile.
-- Validation SQL for source counts and Q1–Q5.
-- Python deployment client using Snowflake PUT and COPY INTO to move already-cleaned local files directly to the internal stage; Static upload is explicit opt-in.
-- Streamlit in Snowflake application using the active Snowpark session.
-- Windows deployment instructions, environment example, runbook and report draft.
-- CI now compiles the Snowflake Python entry points and runs source-level migration tests.
-
-### Not yet executed in the account
-
-- No Snowflake credentials were supplied to the repository workflow and no account-side login was performed.
-- No source files have yet been uploaded to the user's Snowflake stage by this implementation.
-- No RAW/WAREHOUSE/MART row counts have yet been confirmed in Snowsight.
-- The Streamlit app object has not yet been created in the user's Snowflake account.
-- Trial credit usage for the full 175M-row load and Power mart build is therefore not yet known.
-
-### Required account-side sequence
-
-1. Review the current Snowflake trial credit balance and expiry in Snowsight.
-2. Add SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER and SNOWFLAKE_PASSWORD to local .env (do not commit it).
-3. Install requirements-snowflake.txt.
-4. Run scripts/deploy_snowflake.py to load API sessions/userInputs/mapping and validate Q1–Q4 schema.
-5. Check trial credits and the uploaded API row counts.
-6. Run scripts/deploy_snowflake.py --include-static to load the full Static dataset and build Q5 marts, only if the trial balance is sufficient.
-7. Confirm the 3,673-row Power site-hour calendar, Static measurement counts, and the Q1–Q5 Streamlit dashboard.
-8. Capture account evidence and update the report draft with the real account-side numbers.
-
-**Reporting boundary:** as of this commit, the Snowflake migration code and deployment package are implemented in the repository, but the Snowflake account migration is pending. The report must describe the former as implemented and the latter as pending until actual Snowflake query results and dashboard screenshots exist.
-
-
-## 8. Final Snowflake repository integration status (18 Nov 2026)
-
-- Snowflake deployment code, SQL schemas/marts, Streamlit dashboard, Windows wrapper, runbook and report draft have been merged into main.
-- Main commit: 95b8176bee656ec28de26dfa7b3e1ff7c1dc456b.
-- GitHub Actions after merge: Python compile step passed; 37 unit/regression tests passed.
-- Account-side Snowflake load and dashboard verification remain pending. No claim is made that the 175,390,901 Static measurement rows have already been loaded into Snowflake.
-- Next account-side action: configure local .env, run the API-first deployment, verify credits and row counts, then opt in to the Static load with -IncludeStatic -SkipCoreLoad.
+Chi tiết vận hành nằm tại `docs/SNOWFLAKE_MIGRATION_RUNBOOK.md`.
