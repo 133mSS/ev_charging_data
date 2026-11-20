@@ -319,7 +319,7 @@ try:
             q4,
             x="KWH_REQUESTED",
             y="DELIVERED_KWH",
-            color="STATION_ID",
+            hover_name="STATION_ID",
             hover_data=["SESSION_ID", "DELIVERED_VS_REQUESTED_PCT"],
             title="kWh yêu cầu cuối cùng và kWh thực nhận",
             render_mode="svg",
@@ -327,14 +327,42 @@ try:
                 "KWH_REQUESTED": "Năng lượng yêu cầu (kWh)",
                 "DELIVERED_KWH": "Năng lượng thực nhận (kWh)",
                 "STATION_ID": "EVSE",
+                "SESSION_ID": "Mã phiên",
+                "DELIVERED_VS_REQUESTED_PCT": "Thực nhận/yêu cầu (%)",
             },
         )
+        # A single color keeps the chart focused on the relationship between
+        # requested and delivered energy; EVSE identity remains available on hover.
+        fig.update_traces(
+            marker={
+                "color": "#4C8BF5",
+                "size": 6,
+                "opacity": 0.45,
+                "line": {"width": 0},
+            }
+        )
         fig.add_shape(
-            type="line", x0=0, y0=0, x1=lim, y1=lim,
-            line={"dash": "dash"},
+            type="line",
+            x0=0,
+            y0=0,
+            x1=lim,
+            y1=lim,
+            line={"color": "#F59E0B", "dash": "dash", "width": 2},
+        )
+        # Equal axis ranges and scale ensure the y=x reference is visually truthful.
+        fig.update_xaxes(range=[0, lim], title="Năng lượng yêu cầu (kWh)")
+        fig.update_yaxes(
+            range=[0, lim],
+            title="Năng lượng thực nhận (kWh)",
+            scaleanchor="x",
+            scaleratio=1,
         )
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
+            "Mỗi điểm đại diện một phiên sạc; tất cả điểm dùng cùng màu để dễ quan sát mật độ. "
+            "Di chuột lên điểm để xem mã EVSE, mã phiên và tỷ lệ thực nhận/yêu cầu. "
+            "Đường nét đứt y = x biểu thị mức thực nhận bằng yêu cầu: điểm dưới đường là "
+            "thực nhận thấp hơn yêu cầu, điểm trên đường là cao hơn. "
             "Chọn userInputs mới nhất theo modified_at và input_id trước khi lọc "
             "kWh_requested > 0. Độ bao phủ = số phiên có yêu cầu kWh hợp lệ / tổng phiên "
             "trong khoảng lọc. Tỷ lệ thực nhận/yêu cầu là so sánh mô tả, không chứng minh nguyên nhân chênh lệch."
