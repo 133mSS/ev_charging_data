@@ -15,6 +15,7 @@ class TestSnowflakeDataQualityAssets(unittest.TestCase):
             "DUPLICATE_SESSION_KEYS",
             "DUPLICATE_USER_REQUEST_KEYS",
             "DUPLICATE_STATIC_MAPPING_KEYS",
+            "DUPLICATE_API_MAPPING_KEYS",
             "DUPLICATE_STATION_DIMENSION_KEYS",
             "DUPLICATE_DATE_DIMENSION_KEYS",
             "DUPLICATE_TIME_DIMENSION_KEYS",
