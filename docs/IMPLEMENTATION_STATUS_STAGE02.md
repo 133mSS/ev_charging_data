@@ -45,7 +45,7 @@ Static reconciliation: 164.438.039 + 10.952.862 = 175.390.901.
 | Q1 | Dashboard có heatmap thứ × giờ và profile ngày thường/cuối tuần |
 | Q2 | EVSE dẫn đầu về năng lượng: 1-1-194-826 (15.979,49 kWh); nhiều phiên nhất: 1-1-178-823 (1.449 phiên) |
 | Q3 | 25.647 phiên hợp lệ; median 124,6167 phút; P95 478,995 phút |
-| Q4 | 31.444 latest valid requests; median delivered/requested 60,08875%; đạt ≥90% là 14,2% |
+| Q4 | 31.444 latest valid requests trên 33.638 sessions (request coverage 93,48%); median delivered/requested 60,08875%; đạt ≥90% là 14,2% |
 | Q5 | 14.427.675 Static rows trong cửa sổ; 50 EVSE; 18.218 station-hour buckets; 2.240/3.673 UTC hours có quan sát |
 
 Q4 request coverage trên toàn bộ 33.638 sessions là 93,48%.
