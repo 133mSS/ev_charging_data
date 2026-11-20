@@ -129,9 +129,12 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertNotIn('color="STATION_ID"', q4_section)
         self.assertIn('hover_name="STATION_ID"', q4_section)
         self.assertIn('"color": "#4C8BF5"', q4_section)
-        self.assertIn('"opacity": 0.45', q4_section)
-        self.assertIn('scaleanchor="x"', q4_section)
-        self.assertIn('scaleratio=1', q4_section)
+        self.assertIn('"size": 3', q4_section)
+        self.assertIn('"opacity": 0.08', q4_section)
+        self.assertIn('range=[0, lim]', q4_section)
+        self.assertIn('rangemode="tozero"', q4_section)
+        self.assertNotIn('scaleanchor="x"', q4_section)
+        self.assertNotIn('scaleratio=1', q4_section)
 
     def test_warehouse_runtime_uses_builtin_python_without_installing_python_package(self):
         environment = read("snowflake/environment.yml")
