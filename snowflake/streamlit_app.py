@@ -193,23 +193,29 @@ st.header("Q2. Mức độ sử dụng ghi nhận khác nhau thế nào giữa c
 try:
     q2 = query(Q2_STATION_USAGE_SQL, params)
     if not q2.empty:
+        q2_by_sessions = q2.sort_values(
+            "SESSION_COUNT", ascending=False
+        ).reset_index(drop=True)
+        q2_by_energy = q2.sort_values(
+            "TOTAL_ENERGY_KWH", ascending=False
+        ).reset_index(drop=True)
         left, right = st.columns(2)
         with left:
             fig = px.bar(
-                q2,
+                q2_by_sessions,
                 x="STATION_ID",
                 y="SESSION_COUNT",
-                title="Số phiên theo EVSE",
+                title="Số phiên theo EVSE (xếp hạng theo số phiên)",
                 labels={"STATION_ID": "EVSE", "SESSION_COUNT": "Số phiên"},
             )
             fig.update_xaxes(tickangle=-90)
             st.plotly_chart(fig, use_container_width=True)
         with right:
             fig = px.bar(
-                q2,
+                q2_by_energy,
                 x="STATION_ID",
                 y="TOTAL_ENERGY_KWH",
-                title="Tổng năng lượng theo EVSE",
+                title="Tổng năng lượng theo EVSE (xếp hạng theo kWh)",
                 labels={"STATION_ID": "EVSE", "TOTAL_ENERGY_KWH": "Năng lượng (kWh)"},
             )
             fig.update_xaxes(tickangle=-90)
@@ -288,7 +294,7 @@ try:
         100.0 * valid_request_sessions / total_sessions if total_sessions else 0.0
     )
 
-    a, b, c, d = st.columns(4)
+    a, b, c, d, e = st.columns(5)
     a.metric("Tổng phiên trong phạm vi lọc", f"{total_sessions:,}")
     b.metric("Phiên có yêu cầu hợp lệ", f"{valid_request_sessions:,}")
     c.metric("Độ bao phủ yêu cầu hợp lệ", f"{request_coverage_pct:.2f}%")
@@ -299,6 +305,14 @@ try:
         d.metric(
             "Trung vị thực nhận/yêu cầu",
             f"{ratio.median():.1f}%" if not ratio.empty else "N/A",
+        )
+        achieved_90_pct = (
+            100.0 * float((ratio >= 90).mean()) if not ratio.empty else 0.0
+        )
+        e.metric(
+            "Phiên đạt ≥ 90% yêu cầu",
+            f"{achieved_90_pct:.1f}%" if not ratio.empty else "N/A",
+            help="Tỷ lệ tính trên các phiên có yêu cầu kWh hợp lệ và tỷ lệ thực nhận/yêu cầu tính được.",
         )
         lim = float(max(q4["KWH_REQUESTED"].max(), q4["DELIVERED_KWH"].max())) * 1.05
         fig = px.scatter(
@@ -327,6 +341,7 @@ try:
         )
     else:
         d.metric("Trung vị thực nhận/yêu cầu", "N/A")
+        e.metric("Phiên đạt ≥ 90% yêu cầu", "N/A")
         st.info("Không có phiên nào có yêu cầu kWh hợp lệ trong khoảng đang chọn.")
 except Exception as exc:
     show_query_error("Lỗi Q4", exc)
@@ -421,13 +436,17 @@ else:
                     "OBSERVED_UTC_HOURS", lambda values: int((values > 0).sum())
                 ),
             )
+            coverage_plot = coverage.rename(columns={
+                "MEAN_STATION_COVERAGE_PCT": "Coverage trung bình",
+                "MEDIAN_STATION_COVERAGE_PCT": "Coverage trung vị",
+            })
             left, right = st.columns(2)
             with left:
                 st.plotly_chart(
                     px.line(
-                        coverage,
+                        coverage_plot,
                         x="MONTH_LABEL",
-                        y=["MEAN_STATION_COVERAGE_PCT", "MEDIAN_STATION_COVERAGE_PCT"],
+                        y=["Coverage trung bình", "Coverage trung vị"],
                         markers=True,
                         title="Coverage giờ có quan sát trung bình/trung vị theo tháng",
                         labels={
@@ -468,11 +487,15 @@ else:
 
         site_hour_profile = query(Q5_SITE_HOUR_PROFILE_SQL, power_params)
         if not site_hour_profile.empty:
+            site_hour_plot = site_hour_profile.rename(columns={
+                "AVG_EVSE_WITH_POWER": "EVSE có Power trung bình",
+                "MAX_EVSE_WITH_POWER": "EVSE có Power tối đa",
+            })
             st.plotly_chart(
                 px.line(
-                    site_hour_profile,
+                    site_hour_plot,
                     x="LOCAL_HOUR",
-                    y=["AVG_EVSE_WITH_POWER", "MAX_EVSE_WITH_POWER"],
+                    y=["EVSE có Power trung bình", "EVSE có Power tối đa"],
                     markers=True,
                     title="Số EVSE có ít nhất một mẫu Power theo giờ địa phương",
                     labels={"LOCAL_HOUR": "Giờ", "value": "Số EVSE", "variable": "Chỉ số"},
@@ -490,11 +513,15 @@ else:
 
         hod = query(Q5_HOUR_OF_DAY_POWER_SQL, power_params)
         if not hod.empty:
+            hod_plot = hod.rename(columns={
+                "MEAN_STATION_HOUR_POWER_KW": "Power trung bình (kW)",
+                "P95_STATION_HOUR_POWER_KW": "Power P95 (kW)",
+            })
             st.plotly_chart(
                 px.line(
-                    hod,
+                    hod_plot,
                     x="LOCAL_HOUR",
-                    y=["MEAN_STATION_HOUR_POWER_KW", "P95_STATION_HOUR_POWER_KW"],
+                    y=["Power trung bình (kW)", "Power P95 (kW)"],
                     markers=True,
                     title="Phân bố Power trung bình/P95 theo giờ địa phương",
                     labels={
