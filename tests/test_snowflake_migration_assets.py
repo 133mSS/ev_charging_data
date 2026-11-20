@@ -86,14 +86,21 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("mẫu dòng điện dương cuối", app)
         self.assertIn("không phải thời điểm pin đầy", app)
 
-    def test_q2_visuals_sort_each_metric_independently(self):
+    def test_q2_visuals_sort_independently_and_keep_all_evse_in_detail_table(self):
         app = read("snowflake/streamlit_app.py")
-        self.assertIn('q2_by_sessions = q2.sort_values(', app)
-        self.assertIn('"SESSION_COUNT", ascending=False', app)
-        self.assertIn('q2_by_energy = q2.sort_values(', app)
-        self.assertIn('"TOTAL_ENERGY_KWH", ascending=False', app)
-        self.assertIn('px.bar(\n                q2_by_sessions', app)
-        self.assertIn('px.bar(\n                q2_by_energy', app)
+        q2_section = app.split("# Q2", 1)[1].split("# Q3", 1)[0]
+        self.assertIn('q2_by_sessions = q2.sort_values(', q2_section)
+        self.assertIn('"SESSION_COUNT", ascending=False', q2_section)
+        self.assertIn('q2_by_energy = q2.sort_values(', q2_section)
+        self.assertIn('"TOTAL_ENERGY_KWH", ascending=False', q2_section)
+        self.assertIn("top_n = min(15, len(q2))", q2_section)
+        self.assertIn('orientation="h"', q2_section)
+        self.assertIn("q2_sessions_plot", q2_section)
+        self.assertIn("q2_energy_plot", q2_section)
+        self.assertIn('rank(method="min", ascending=False)', q2_section)
+        self.assertIn('"RANK_BY_SESSIONS": "Hạng theo số phiên"', q2_section)
+        self.assertIn('"RANK_BY_ENERGY": "Hạng theo tổng kWh"', q2_section)
+        self.assertIn("len(q2)} EVSE", q2_section)
 
     def test_q4_restores_share_of_sessions_at_or_above_90_percent(self):
         app = read("snowflake/streamlit_app.py")
@@ -129,6 +136,21 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("height=max(760, 18 * len(station_ids))", q5_section)
         self.assertIn("len(station_ids) * len(month_values)", q5_section)
 
+    def test_q1_heatmap_draws_all_weekday_labels(self):
+        app = read("snowflake/streamlit_app.py")
+        q1_section = app.split("# Q1", 1)[1].split("# Q2", 1)[0]
+        self.assertIn("tickmode=\"array\"", q1_section)
+        self.assertIn("tickvals=weekday_order", q1_section)
+        self.assertIn("ticktext=weekday_order", q1_section)
+
+    def test_q3_duration_chart_displays_counts_and_session_share(self):
+        app = read("snowflake/streamlit_app.py")
+        q3_section = app.split("# Q3", 1)[1].split("# Q4", 1)[0]
+        self.assertIn("SESSION_SHARE_PCT", q3_section)
+        self.assertIn('text="SESSION_COUNT"', q3_section)
+        self.assertIn('texttemplate="%{y:,.0f} · %{customdata[0]:.1f}%"', q3_section)
+        self.assertIn('"Tỷ trọng phiên (%)"', q3_section)
+
     def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
@@ -146,8 +168,9 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn('"color": "#5B9BFF"', q4_section)
         self.assertIn('range=[0, lim]', q4_section)
         self.assertIn('rangemode="tozero"', q4_section)
-        self.assertNotIn('scaleanchor="x"', q4_section)
-        self.assertNotIn('scaleratio=1', q4_section)
+        self.assertIn('scaleanchor="x"', q4_section)
+        self.assertIn('scaleratio=1', q4_section)
+        self.assertIn('constrain="domain"', q4_section)
 
     def test_warehouse_runtime_uses_builtin_python_without_installing_python_package(self):
         environment = read("snowflake/environment.yml")
