@@ -48,6 +48,16 @@ class TestSnowflakeDataQualityAssets(unittest.TestCase):
             script.index("deploy_streamlit_app(connection)"),
         )
 
+    def test_quality_gate_supports_multi_statement_sql_file(self):
+        script = read("scripts/deploy_snowflake.py")
+        block = script[
+            script.index("def run_data_quality_checks("):
+            script.index("def deploy_streamlit_app(")
+        ]
+        self.assertIn("connection.execute_string(", block)
+        self.assertIn("return_cursors=True", block)
+        self.assertNotIn("cursor.execute(sql_path.read_text", block)
+
 
 if __name__ == "__main__":
     unittest.main()
