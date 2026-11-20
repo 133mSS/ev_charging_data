@@ -123,6 +123,16 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("request_coverage_pct", app)
         self.assertIn('render_mode="svg"', app)
 
+    def test_q4_scatter_uses_single_color_and_keeps_evse_on_hover(self):
+        app = read("snowflake/streamlit_app.py")
+        q4_section = app.split("# Q4", 1)[1].split("# Q5", 1)[0]
+        self.assertNotIn('color="STATION_ID"', q4_section)
+        self.assertIn('hover_name="STATION_ID"', q4_section)
+        self.assertIn('"color": "#4C8BF5"', q4_section)
+        self.assertIn('"opacity": 0.45', q4_section)
+        self.assertIn('scaleanchor="x"', q4_section)
+        self.assertIn('scaleratio=1', q4_section)
+
     def test_warehouse_runtime_uses_builtin_python_without_installing_python_package(self):
         environment = read("snowflake/environment.yml")
         deploy = read("scripts/deploy_snowflake.py")
