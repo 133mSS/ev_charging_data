@@ -145,7 +145,8 @@ Chạy trong Snowsight theo thứ tự:
 Các check mới gồm:
 - Duplicate session key.
 - Duplicate (session_id, input_id) request key.
-- Duplicate Static mapping key.
+- Duplicate non-null Static mapping key (API_ONLY rows have no Static key and are excluded).
+- Duplicate non-null API mapping key.
 - Duplicate station/date/time dimension keys.
 - Orphan DATE_KEY/TIME_KEY trong charging-session fact.
 - Static row reconciliation.
