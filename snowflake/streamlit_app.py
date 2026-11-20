@@ -336,9 +336,9 @@ try:
         # EVSE identity remains available in the hover tooltip, not as a color category.
         fig.update_traces(
             marker={
-                "color": "#4C8BF5",
-                "size": 3,
-                "opacity": 0.08,
+                "color": "#5B9BFF",
+                "size": 4,
+                "opacity": 0.22,
                 "line": {"width": 0},
             },
             hovertemplate=(
