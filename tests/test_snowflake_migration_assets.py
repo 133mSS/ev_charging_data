@@ -86,6 +86,37 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("mẫu dòng điện dương cuối", app)
         self.assertIn("không phải thời điểm pin đầy", app)
 
+    def test_q2_visuals_sort_each_metric_independently(self):
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn('q2_by_sessions = q2.sort_values(', app)
+        self.assertIn('"SESSION_COUNT", ascending=False', app)
+        self.assertIn('q2_by_energy = q2.sort_values(', app)
+        self.assertIn('"TOTAL_ENERGY_KWH", ascending=False', app)
+        self.assertIn('px.bar(\n                q2_by_sessions', app)
+        self.assertIn('px.bar(\n                q2_by_energy', app)
+
+    def test_q4_restores_share_of_sessions_at_or_above_90_percent(self):
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn('achieved_90_pct =', app)
+        self.assertIn('(ratio >= 90).mean()', app)
+        self.assertIn('e.metric(\n            "Phiên đạt ≥ 90% yêu cầu"', app)
+        self.assertIn('e.metric("Phiên đạt ≥ 90% yêu cầu", "N/A")', app)
+
+    def test_q5_multi_series_legends_use_vietnamese_labels(self):
+        app = read("snowflake/streamlit_app.py")
+        for label in [
+            "Coverage trung bình",
+            "Coverage trung vị",
+            "EVSE có Power trung bình",
+            "EVSE có Power tối đa",
+            "Power trung bình (kW)",
+            "Power P95 (kW)",
+        ]:
+            self.assertIn(label, app)
+        self.assertIn("y=[\"Coverage trung bình\", \"Coverage trung vị\"]", app)
+        self.assertIn("y=[\"EVSE có Power trung bình\", \"EVSE có Power tối đa\"]", app)
+        self.assertIn("y=[\"Power trung bình (kW)\", \"Power P95 (kW)\"]", app)
+
     def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
