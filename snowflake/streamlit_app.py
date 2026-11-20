@@ -132,7 +132,11 @@ try:
         pivot = q1.pivot(
             index="DAY_NAME", columns="LOCAL_HOUR", values="SESSION_COUNT"
         ).fillna(0)
-        pivot = pivot.reindex([day for day in weekday_order if day in pivot.index])
+        pivot = pivot.reindex(
+            index=weekday_order,
+            columns=list(range(24)),
+            fill_value=0,
+        )
         fig = px.imshow(
             pivot,
             aspect="auto",
