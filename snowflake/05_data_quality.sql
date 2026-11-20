@@ -21,6 +21,80 @@ WITH CHECKS AS (
 
     UNION ALL
     SELECT
+        'DUPLICATE_STATION_DIMENSION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT STATION_ID
+                FROM WAREHOUSE.DIM_STATION
+                GROUP BY STATION_ID
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'DIM_STATION must contain one row per STATION_ID.'
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_DATE_DIMENSION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT DATE_KEY
+                FROM WAREHOUSE.DIM_DATE
+                GROUP BY DATE_KEY
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'DIM_DATE must contain one row per DATE_KEY.'
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_TIME_DIMENSION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT TIME_KEY
+                FROM WAREHOUSE.DIM_TIME
+                GROUP BY TIME_KEY
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'DIM_TIME must contain one row per TIME_KEY.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_SESSION_DATE_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_CHARGING_SESSIONS F
+            LEFT JOIN WAREHOUSE.DIM_DATE D ON D.DATE_KEY = F.DATE_KEY
+            WHERE D.DATE_KEY IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every charging-session DATE_KEY must resolve to DIM_DATE.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_SESSION_TIME_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_CHARGING_SESSIONS F
+            LEFT JOIN WAREHOUSE.DIM_TIME T ON T.TIME_KEY = F.TIME_KEY
+            WHERE T.TIME_KEY IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every charging-session TIME_KEY must resolve to DIM_TIME.'
+
+    UNION ALL
+    SELECT
         'DUPLICATE_USER_REQUEST_KEYS',
         (
             SELECT COUNT(*)
