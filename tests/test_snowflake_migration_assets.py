@@ -117,6 +117,18 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("y=[\"EVSE có Power trung bình\", \"EVSE có Power tối đa\"]", app)
         self.assertIn("y=[\"Power trung bình (kW)\", \"Power P95 (kW)\"]", app)
 
+    def test_q5_heatmap_renders_all_fixed_evse_labels(self):
+        app = read("snowflake/streamlit_app.py")
+        q5_section = app.split("# Q5", 1)[1]
+        self.assertIn("heatmap_matrix = (", q5_section)
+        self.assertIn(".reindex(index=station_ids, columns=month_values)", q5_section)
+        self.assertIn('tickmode="array"', q5_section)
+        self.assertIn("tickvals=station_ids", q5_section)
+        self.assertIn("ticktext=station_ids", q5_section)
+        self.assertIn('tickfont={"size": 9}', q5_section)
+        self.assertIn("height=max(760, 18 * len(station_ids))", q5_section)
+        self.assertIn("len(station_ids) * len(month_values)", q5_section)
+
     def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
