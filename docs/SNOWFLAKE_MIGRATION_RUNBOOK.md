@@ -146,6 +146,8 @@ Các check mới gồm:
 - Duplicate session key.
 - Duplicate (session_id, input_id) request key.
 - Duplicate Static mapping key.
+- Duplicate station/date/time dimension keys.
+- Orphan DATE_KEY/TIME_KEY trong charging-session fact.
 - Static row reconciliation.
 - Unmapped Static rows.
 - Orphan station keys.
