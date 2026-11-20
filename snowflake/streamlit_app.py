@@ -147,6 +147,14 @@ try:
             },
             title="Heatmap số phiên bắt đầu theo thứ × giờ",
         )
+        fig.update_yaxes(
+            tickmode="array",
+            tickvals=weekday_order,
+            ticktext=weekday_order,
+            tickfont={"size": 11},
+            automargin=True,
+        )
+        fig.update_layout(height=420, margin={"l": 105, "r": 30, "t": 65, "b": 60})
         st.plotly_chart(fig, use_container_width=True)
 
         weekday_weekend = query(Q1_WEEKDAY_WEEKEND_SQL, params)
@@ -199,29 +207,83 @@ try:
         q2_by_energy = q2.sort_values(
             "TOTAL_ENERGY_KWH", ascending=False
         ).reset_index(drop=True)
+
+        # Keep all EVSEs in the detail table, but show a readable Top 15 in charts.
+        # The two rankings are intentionally calculated independently.
+        top_n = min(15, len(q2))
+        q2_sessions_plot = q2_by_sessions.head(top_n).sort_values(
+            "SESSION_COUNT", ascending=True
+        )
+        q2_energy_plot = q2_by_energy.head(top_n).sort_values(
+            "TOTAL_ENERGY_KWH", ascending=True
+        )
         left, right = st.columns(2)
         with left:
             fig = px.bar(
-                q2_by_sessions,
-                x="STATION_ID",
-                y="SESSION_COUNT",
-                title="Số phiên theo EVSE (xếp hạng theo số phiên)",
+                q2_sessions_plot,
+                x="SESSION_COUNT",
+                y="STATION_ID",
+                orientation="h",
+                text="SESSION_COUNT",
+                title=f"Top {top_n} EVSE theo số phiên",
                 labels={"STATION_ID": "EVSE", "SESSION_COUNT": "Số phiên"},
             )
-            fig.update_xaxes(tickangle=-90)
+            fig.update_traces(
+                texttemplate="%{x:,.0f}",
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b><br>Số phiên: %{x:,.0f}<extra></extra>",
+            )
+            fig.update_xaxes(title="Số phiên", rangemode="tozero")
+            fig.update_yaxes(title="EVSE", tickfont={"size": 10})
+            fig.update_layout(
+                height=560,
+                margin={"l": 115, "r": 45, "t": 70, "b": 55},
+            )
             st.plotly_chart(fig, use_container_width=True)
         with right:
             fig = px.bar(
-                q2_by_energy,
-                x="STATION_ID",
-                y="TOTAL_ENERGY_KWH",
-                title="Tổng năng lượng theo EVSE (xếp hạng theo kWh)",
+                q2_energy_plot,
+                x="TOTAL_ENERGY_KWH",
+                y="STATION_ID",
+                orientation="h",
+                text="TOTAL_ENERGY_KWH",
+                title=f"Top {top_n} EVSE theo tổng năng lượng",
                 labels={"STATION_ID": "EVSE", "TOTAL_ENERGY_KWH": "Năng lượng (kWh)"},
             )
-            fig.update_xaxes(tickangle=-90)
+            fig.update_traces(
+                texttemplate="%{x:,.0f}",
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b><br>Tổng năng lượng: %{x:,.2f} kWh<extra></extra>",
+            )
+            fig.update_xaxes(title="Năng lượng (kWh)", rangemode="tozero")
+            fig.update_yaxes(title="EVSE", tickfont={"size": 10})
+            fig.update_layout(
+                height=560,
+                margin={"l": 115, "r": 55, "t": 70, "b": 55},
+            )
             st.plotly_chart(fig, use_container_width=True)
-        display_q2 = q2.rename(columns={
+        st.caption(
+            f"Hai biểu đồ hiển thị Top {top_n} EVSE theo hai tiêu chí xếp hạng độc lập. "
+            f"Bảng chi tiết bên dưới vẫn giữ toàn bộ {len(q2)} EVSE; thứ hạng theo số phiên "
+            "và theo tổng kWh được tính riêng."
+        )
+
+        q2_detail = q2.copy()
+        q2_detail["RANK_BY_SESSIONS"] = q2_detail["SESSION_COUNT"].rank(
+            method="min", ascending=False
+        ).astype(int)
+        q2_detail["RANK_BY_ENERGY"] = q2_detail["TOTAL_ENERGY_KWH"].rank(
+            method="min", ascending=False
+        ).astype(int)
+        q2_detail = q2_detail.sort_values(
+            "TOTAL_ENERGY_KWH", ascending=False
+        )
+        display_q2 = q2_detail.rename(columns={
             "STATION_ID": "Mã EVSE",
+            "RANK_BY_SESSIONS": "Hạng theo số phiên",
+            "RANK_BY_ENERGY": "Hạng theo tổng kWh",
             "SESSION_COUNT": "Số phiên",
             "TOTAL_ENERGY_KWH": "Tổng năng lượng (kWh)",
             "AVG_ENERGY_PER_SESSION_KWH": "kWh trung bình/phiên",
@@ -245,19 +307,41 @@ st.header("Q3. Thời lượng kết nối và khoảng từ mẫu dòng điện
 try:
     q3a = query(Q3_CONNECTION_DURATION_SQL, params)
     if not q3a.empty:
-        st.plotly_chart(
-            px.bar(
-                q3a,
-                x="DURATION_GROUP",
-                y="SESSION_COUNT",
-                title="Số phiên theo nhóm thời lượng kết nối",
-                labels={"DURATION_GROUP": "Thời lượng kết nối", "SESSION_COUNT": "Số phiên"},
-            ),
-            use_container_width=True,
+        q3a = q3a.copy()
+        total_q3_sessions = int(q3a["SESSION_COUNT"].sum())
+        q3a["SESSION_SHARE_PCT"] = (
+            100.0 * q3a["SESSION_COUNT"] / total_q3_sessions
+            if total_q3_sessions else 0.0
         )
+        fig = px.bar(
+            q3a,
+            x="DURATION_GROUP",
+            y="SESSION_COUNT",
+            text="SESSION_COUNT",
+            title="Số phiên theo nhóm thời lượng kết nối",
+            labels={"DURATION_GROUP": "Thời lượng kết nối", "SESSION_COUNT": "Số phiên"},
+            custom_data=["SESSION_SHARE_PCT"],
+        )
+        fig.update_traces(
+            texttemplate="%{y:,.0f} · %{customdata[0]:.1f}%",
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate=(
+                "<b>%{x}</b><br>Số phiên: %{y:,.0f}"
+                "<br>Tỷ trọng: %{customdata[0]:.1f}%<extra></extra>"
+            ),
+        )
+        fig.update_yaxes(
+            title="Số phiên",
+            rangemode="tozero",
+            range=[0, float(q3a["SESSION_COUNT"].max()) * 1.18],
+        )
+        fig.update_layout(height=430, margin={"t": 70, "b": 65})
+        st.plotly_chart(fig, use_container_width=True)
         display_q3 = q3a.rename(columns={
             "DURATION_GROUP": "Nhóm thời lượng",
             "SESSION_COUNT": "Số phiên",
+            "SESSION_SHARE_PCT": "Tỷ trọng phiên (%)",
             "AVG_CONNECTION_MINUTES": "Kết nối trung bình (phút)",
             "AVG_ENERGY_KWH": "Năng lượng TB (kWh)",
         })
@@ -362,7 +446,16 @@ try:
         # Do not lock their pixel aspect ratio: on a wide dashboard that expands X
         # into negative values, even though requested energy cannot be negative.
         fig.update_xaxes(range=[0, lim], title="Năng lượng yêu cầu (kWh)", rangemode="tozero")
-        fig.update_yaxes(range=[0, lim], title="Năng lượng thực nhận (kWh)", rangemode="tozero")
+        fig.update_yaxes(
+            range=[0, lim],
+            title="Năng lượng thực nhận (kWh)",
+            rangemode="tozero",
+            scaleanchor="x",
+            scaleratio=1,
+        )
+        # Constrain the horizontal plotting domain instead of expanding either
+        # energy range; this preserves a true 1:1 reference line without negatives.
+        fig.update_xaxes(constrain="domain")
         fig.update_layout(height=620, hovermode="closest")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
