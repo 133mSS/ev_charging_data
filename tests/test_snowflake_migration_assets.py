@@ -221,6 +221,16 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn('"--include-static"', script)
         self.assertIn("if args.include_static:", script)
 
+    def test_app_only_deploy_skips_data_and_mart_rebuild(self):
+        script = read("scripts/deploy_snowflake.py")
+        wrapper = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn('"--app-only"', script)
+        app_only = script[script.index('if args.app_only:'):script.index('run_id = str(uuid.uuid4())')]
+        self.assertIn("deploy_streamlit_app(connection)", app_only)
+        self.assertNotIn("run_sql_file(connection, \"snowflake/03_power_marts.sql\")", app_only)
+        self.assertIn("[switch]$AppOnly", wrapper)
+        self.assertIn('$PythonArgs += "--app-only"', wrapper)
+
 
 if __name__ == "__main__":
     unittest.main()
