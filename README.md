@@ -59,7 +59,7 @@ MATCHED + API_ONLY = 33.638 API sessions. MATCHED + STATIC_ONLY = 27.625 Static 
 | STATIC_ONLY | 10.952.862 |
 | Tổng MATCHED + STATIC_ONLY | 175.390.901 |
 
-**Không nhầm grain:** 25.647 là số phiên được ghép; 164.438.039 là số dòng phép đo Static thuộc các phiên ghép.
+**Khác grain:** inventory 27.723 file đếm file nguồn; số Static sessions 27.625 trong mapping đếm các phiên được giữ lại sau bước transform. **Không nhầm grain:** 25.647 là số phiên được ghép; 164.438.039 là số dòng phép đo Static thuộc các phiên ghép.
 
 ## 3. Quy trình xử lý dữ liệu
 
