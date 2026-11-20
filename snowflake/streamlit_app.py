@@ -508,18 +508,41 @@ else:
                     ),
                     use_container_width=True,
                 )
-            st.plotly_chart(
-                px.imshow(
-                    complete.pivot(
-                        index="STATION_ID",
-                        columns="MONTH_LABEL",
-                        values="CALENDAR_HOUR_OBSERVATION_PCT",
-                    ),
-                    aspect="auto",
-                    labels={"x": "Tháng", "y": "EVSE", "color": "Giờ có quan sát (%)"},
-                    title="Heatmap coverage EVSE × tháng (không có quan sát = 0% coverage)",
-                ),
-                use_container_width=True,
+            # Keep the full fixed EVSE cohort and explicitly draw every station label.
+            # Plotly otherwise samples categorical ticks on a 50-row heatmap, making
+            # the chart look as if only a subset of EVSEs were included.
+            heatmap_matrix = (
+                complete.pivot(
+                    index="STATION_ID",
+                    columns="MONTH_LABEL",
+                    values="CALENDAR_HOUR_OBSERVATION_PCT",
+                )
+                .reindex(index=station_ids, columns=month_values)
+            )
+            heatmap_fig = px.imshow(
+                heatmap_matrix,
+                aspect="auto",
+                labels={"x": "Tháng", "y": "EVSE", "color": "Giờ có quan sát (%)"},
+                title="Heatmap coverage EVSE × tháng (không có quan sát = 0% coverage)",
+            )
+            heatmap_fig.update_yaxes(
+                tickmode="array",
+                tickvals=station_ids,
+                ticktext=station_ids,
+                tickfont={"size": 9},
+                automargin=True,
+            )
+            heatmap_fig.update_layout(
+                height=max(760, 18 * len(station_ids)),
+                margin={"l": 115, "r": 35, "t": 80, "b": 65},
+            )
+            st.plotly_chart(heatmap_fig, use_container_width=True)
+            st.caption(
+                f"Population cố định: {len(station_ids)} EVSE · "
+                f"{len(month_values)} tháng · "
+                f"{len(station_ids) * len(month_values):,} ô EVSE–tháng. "
+                "Mỗi mã EVSE được hiển thị thành một nhãn riêng; ô 0% biểu thị tháng "
+                "không có giờ quan sát, không phải Power bằng 0 kW."
             )
 
         site_hour_profile = query(Q5_SITE_HOUR_PROFILE_SQL, power_params)
