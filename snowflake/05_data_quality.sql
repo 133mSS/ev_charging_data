@@ -117,6 +117,7 @@ WITH CHECKS AS (
             FROM (
                 SELECT STATIC_SESSION_ID
                 FROM RAW.STG_SESSION_MAPPING
+                WHERE STATIC_SESSION_ID IS NOT NULL
                 GROUP BY STATIC_SESSION_ID
                 HAVING COUNT(*) > 1
             )
@@ -124,6 +125,23 @@ WITH CHECKS AS (
         0,
         'EQUAL',
         'Each Static session identifier must map to at most one mapping row.'
+
+    UNION ALL
+    SELECT
+        'DUPLICATE_API_MAPPING_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT API_SESSION_ID
+                FROM RAW.STG_SESSION_MAPPING
+                WHERE API_SESSION_ID IS NOT NULL
+                GROUP BY API_SESSION_ID
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'Each non-null API session identifier must map to at most one mapping row.'
 
     UNION ALL
     SELECT
