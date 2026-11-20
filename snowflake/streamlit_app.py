@@ -10,6 +10,22 @@ import plotly.express as px
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
+from analytics_queries import (
+    Q1_WEEKDAY_HOUR_SQL,
+    Q1_WEEKDAY_WEEKEND_SQL,
+    Q2_STATION_USAGE_SQL,
+    Q3_CONNECTION_DURATION_SQL,
+    Q3_POST_LAST_CURRENT_SQL,
+    Q4_LATEST_REQUESTS_SQL,
+    Q4_TOTAL_SESSIONS_SQL,
+    Q5_POWER_SUMMARY_SQL,
+    Q5_MONTHLY_POWER_SQL,
+    Q5_STATION_SCOPE_SQL,
+    Q5_SITE_HOUR_SUMMARY_SQL,
+    Q5_SITE_HOUR_PROFILE_SQL,
+    Q5_HOUR_OF_DAY_POWER_SQL,
+)
+
 
 st.set_page_config(
     page_title="JPL EV Charging Analytics",
@@ -105,366 +121,400 @@ except Exception as exc:
 # Q1
 st.header("Q1. Nhu cầu sạc tập trung vào ngày nào và khung giờ nào?")
 try:
-    q1 = query("""
-        SELECT
-            DAYOFWEEKISO(LOCAL_DATE) AS DAY_OF_WEEK,
-            DAYNAME(LOCAL_DATE) AS DAY_NAME,
-            LOCAL_HOUR,
-            COUNT(*) AS SESSION_COUNT,
-            SUM(ENERGY_KWH) AS ENERGY_KWH
-        FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS
-        WHERE LOCAL_DATE >= ? AND LOCAL_DATE < ?
-        GROUP BY DAYOFWEEKISO(LOCAL_DATE), DAYNAME(LOCAL_DATE), LOCAL_HOUR
-        ORDER BY DAY_OF_WEEK, LOCAL_HOUR
-    """, params)
+    q1 = query(Q1_WEEKDAY_HOUR_SQL, params)
     if q1.empty:
         st.info("Không có phiên sạc trong khoảng đang chọn.")
     else:
-        pivot = q1.pivot(index="DAY_NAME", columns="LOCAL_HOUR", values="SESSION_COUNT").fillna(0)
-        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        pivot = pivot.reindex([x for x in order if x in pivot.index])
+        weekday_order = [
+            "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm",
+            "Thứ Sáu", "Thứ Bảy", "Chủ Nhật",
+        ]
+        pivot = q1.pivot(
+            index="DAY_NAME", columns="LOCAL_HOUR", values="SESSION_COUNT"
+        ).fillna(0)
+        pivot = pivot.reindex([day for day in weekday_order if day in pivot.index])
         fig = px.imshow(
             pivot,
             aspect="auto",
-            labels={"x": "Giờ bắt đầu (Los Angeles)", "y": "Ngày trong tuần", "color": "Số phiên"},
+            labels={
+                "x": "Giờ bắt đầu (America/Los_Angeles)",
+                "y": "Ngày trong tuần",
+                "color": "Số phiên",
+            },
             title="Heatmap số phiên bắt đầu theo thứ × giờ",
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        weekday_weekend = query("""
-            WITH CALENDAR_DAYS AS (
-                SELECT DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE AS LOCAL_DATE
-                FROM (
-                    SELECT ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS DAY_OFFSET,
-                           TO_DATE(?) AS START_DATE
-                    FROM TABLE(GENERATOR(ROWCOUNT => 4000))
-                )
-                WHERE DATEADD(DAY, DAY_OFFSET, START_DATE)::DATE < TO_DATE(?)
-            ),
-            DAY_TYPES AS (
-                SELECT
-                    LOCAL_DATE,
-                    IFF(DAYOFWEEKISO(LOCAL_DATE) IN (6,7), 'Cuối tuần', 'Ngày thường') AS DAY_TYPE
-                FROM CALENDAR_DAYS
-            ),
-            COUNTS AS (
-                SELECT DAY_TYPE, COUNT(*) AS CALENDAR_DAYS
-                FROM DAY_TYPES GROUP BY DAY_TYPE
-            ),
-            ACTIVITY AS (
-                SELECT
-                    DT.DAY_TYPE,
-                    F.LOCAL_HOUR,
-                    COUNT(*) AS SESSION_COUNT,
-                    SUM(F.ENERGY_KWH) AS ENERGY_KWH
-                FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS F
-                JOIN DAY_TYPES DT ON DT.LOCAL_DATE = F.LOCAL_DATE
-                GROUP BY DT.DAY_TYPE, F.LOCAL_HOUR
-            )
-            SELECT
-                C.DAY_TYPE,
-                H.HOUR_VALUE AS LOCAL_HOUR,
-                COALESCE(A.SESSION_COUNT,0) / NULLIF(C.CALENDAR_DAYS,0) AS AVG_SESSIONS_PER_DAY,
-                COALESCE(A.ENERGY_KWH,0) / NULLIF(C.CALENDAR_DAYS,0) AS AVG_START_HOUR_KWH_PER_DAY
-            FROM COUNTS C
-            CROSS JOIN (
-                SELECT ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1 AS HOUR_VALUE
-                FROM TABLE(GENERATOR(ROWCOUNT => 24))
-            ) H
-            LEFT JOIN ACTIVITY A
-                ON A.DAY_TYPE = C.DAY_TYPE AND A.LOCAL_HOUR = H.HOUR_VALUE
-            ORDER BY C.DAY_TYPE, H.HOUR_VALUE
-        """, params)
+        weekday_weekend = query(Q1_WEEKDAY_WEEKEND_SQL, params)
         left, right = st.columns(2)
         with left:
             fig = px.line(
-                weekday_weekend, x="LOCAL_HOUR", y="AVG_SESSIONS_PER_DAY",
-                color="DAY_TYPE", markers=True,
+                weekday_weekend,
+                x="LOCAL_HOUR",
+                y="AVG_SESSIONS_PER_DAY",
+                color="DAY_TYPE",
+                markers=True,
                 title="Số phiên bắt đầu trung bình mỗi ngày",
+                labels={
+                    "LOCAL_HOUR": "Giờ bắt đầu",
+                    "AVG_SESSIONS_PER_DAY": "Phiên/ngày",
+                    "DAY_TYPE": "Nhóm ngày",
+                },
             )
             st.plotly_chart(fig, use_container_width=True)
         with right:
             fig = px.line(
-                weekday_weekend, x="LOCAL_HOUR", y="AVG_START_HOUR_KWH_PER_DAY",
-                color="DAY_TYPE", markers=True,
+                weekday_weekend,
+                x="LOCAL_HOUR",
+                y="AVG_START_HOUR_KWH_PER_DAY",
+                color="DAY_TYPE",
+                markers=True,
                 title="kWh gắn với phiên bắt đầu trung bình mỗi ngày",
+                labels={
+                    "LOCAL_HOUR": "Giờ bắt đầu",
+                    "AVG_START_HOUR_KWH_PER_DAY": "kWh/ngày",
+                    "DAY_TYPE": "Nhóm ngày",
+                },
             )
             st.plotly_chart(fig, use_container_width=True)
-        st.caption("Số phiên và kWh được chuẩn hóa theo số ngày lịch trong từng nhóm. kWh được gán theo giờ bắt đầu phiên, không phải điện năng đo riêng trong giờ đó.")
+        st.caption(
+            "Số phiên và kWh được chuẩn hóa theo số ngày lịch trong từng nhóm. "
+            "kWh được gán theo giờ bắt đầu phiên, không phải điện năng đo riêng trong giờ đó."
+        )
 except Exception as exc:
     show_query_error("Lỗi Q1", exc)
 
 # Q2
 st.header("Q2. Mức độ sử dụng ghi nhận khác nhau thế nào giữa các EVSE?")
 try:
-    q2 = query("""
-        SELECT
-            STATION_ID,
-            COUNT(*) AS SESSION_COUNT,
-            SUM(ENERGY_KWH) AS TOTAL_ENERGY_KWH,
-            AVG(ENERGY_KWH) AS AVG_ENERGY_PER_SESSION_KWH,
-            AVG(CONNECTION_DURATION_MINUTES) AS AVG_CONNECTION_MINUTES,
-            100.0 * SUM(ENERGY_KWH) / NULLIF(SUM(SUM(ENERGY_KWH)) OVER (),0) AS ENERGY_SHARE_PCT
-        FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS
-        WHERE LOCAL_DATE >= ? AND LOCAL_DATE < ?
-        GROUP BY STATION_ID
-        ORDER BY TOTAL_ENERGY_KWH DESC
-    """, params)
+    q2 = query(Q2_STATION_USAGE_SQL, params)
     if not q2.empty:
         left, right = st.columns(2)
         with left:
-            st.plotly_chart(
-                px.bar(q2, x="STATION_ID", y="SESSION_COUNT", title="Số phiên theo EVSE"),
-                use_container_width=True,
+            fig = px.bar(
+                q2,
+                x="STATION_ID",
+                y="SESSION_COUNT",
+                title="Số phiên theo EVSE",
+                labels={"STATION_ID": "EVSE", "SESSION_COUNT": "Số phiên"},
             )
+            fig.update_xaxes(tickangle=-90)
+            st.plotly_chart(fig, use_container_width=True)
         with right:
-            st.plotly_chart(
-                px.bar(q2, x="STATION_ID", y="TOTAL_ENERGY_KWH", title="Tổng kWh theo EVSE"),
-                use_container_width=True,
+            fig = px.bar(
+                q2,
+                x="STATION_ID",
+                y="TOTAL_ENERGY_KWH",
+                title="Tổng năng lượng theo EVSE",
+                labels={"STATION_ID": "EVSE", "TOTAL_ENERGY_KWH": "Năng lượng (kWh)"},
             )
-        st.dataframe(q2, use_container_width=True, hide_index=True)
+            fig.update_xaxes(tickangle=-90)
+            st.plotly_chart(fig, use_container_width=True)
+        display_q2 = q2.rename(columns={
+            "STATION_ID": "Mã EVSE",
+            "SESSION_COUNT": "Số phiên",
+            "TOTAL_ENERGY_KWH": "Tổng năng lượng (kWh)",
+            "AVG_ENERGY_PER_SESSION_KWH": "kWh trung bình/phiên",
+            "AVG_CONNECTION_MINUTES": "Thời lượng kết nối TB (phút)",
+            "ENERGY_SHARE_PCT": "Tỷ trọng năng lượng (%)",
+        })
+        st.dataframe(display_q2, use_container_width=True, hide_index=True)
         top_energy = q2.iloc[0]
         top_sessions = q2.loc[q2["SESSION_COUNT"].idxmax()]
         st.info(
-            f"Trạm dẫn đầu về năng lượng: {top_energy['STATION_ID']} "
+            f"EVSE dẫn đầu về năng lượng: {top_energy['STATION_ID']} "
             f"({float(top_energy['TOTAL_ENERGY_KWH']):,.1f} kWh); "
-            f"trạm có nhiều phiên nhất: {top_sessions['STATION_ID']} "
+            f"EVSE có nhiều phiên nhất: {top_sessions['STATION_ID']} "
             f"({int(top_sessions['SESSION_COUNT']):,} phiên)."
         )
 except Exception as exc:
     show_query_error("Lỗi Q2", exc)
 
 # Q3
-st.header("Q3. Thời lượng kết nối và khoảng thời gian sau mẫu dòng sạc cuối")
+st.header("Q3. Thời lượng kết nối và khoảng từ mẫu dòng điện dương cuối đến lúc ngắt kết nối")
 try:
-    q3a = query("""
-        SELECT
-            CASE
-                WHEN CONNECTION_DURATION_MINUTES < 60 THEN '< 1 giờ'
-                WHEN CONNECTION_DURATION_MINUTES < 180 THEN '1–3 giờ'
-                WHEN CONNECTION_DURATION_MINUTES < 360 THEN '3–6 giờ'
-                ELSE '>= 6 giờ'
-            END AS DURATION_GROUP,
-            COUNT(*) AS SESSION_COUNT,
-            AVG(CONNECTION_DURATION_MINUTES) AS AVG_CONNECTION_MINUTES,
-            AVG(ENERGY_KWH) AS AVG_ENERGY_KWH
-        FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS
-        WHERE LOCAL_DATE >= ? AND LOCAL_DATE < ?
-          AND CONNECTION_DURATION_MINUTES >= 0
-        GROUP BY DURATION_GROUP
-        ORDER BY MIN(CONNECTION_DURATION_MINUTES)
-    """, params)
+    q3a = query(Q3_CONNECTION_DURATION_SQL, params)
     if not q3a.empty:
         st.plotly_chart(
-            px.bar(q3a, x="DURATION_GROUP", y="SESSION_COUNT", title="Số phiên theo nhóm thời lượng kết nối"),
+            px.bar(
+                q3a,
+                x="DURATION_GROUP",
+                y="SESSION_COUNT",
+                title="Số phiên theo nhóm thời lượng kết nối",
+                labels={"DURATION_GROUP": "Thời lượng kết nối", "SESSION_COUNT": "Số phiên"},
+            ),
             use_container_width=True,
         )
-        st.dataframe(q3a, use_container_width=True, hide_index=True)
+        display_q3 = q3a.rename(columns={
+            "DURATION_GROUP": "Nhóm thời lượng",
+            "SESSION_COUNT": "Số phiên",
+            "AVG_CONNECTION_MINUTES": "Kết nối trung bình (phút)",
+            "AVG_ENERGY_KWH": "Năng lượng TB (kWh)",
+        })
+        st.dataframe(display_q3, use_container_width=True, hide_index=True)
 
-    q3b = query("""
-        SELECT
-            COUNT(*) AS VALID_SESSIONS,
-            MEDIAN(POST_LAST_CURRENT_MINUTES) AS MEDIAN_POST_CURRENT_MINUTES,
-            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY POST_LAST_CURRENT_MINUTES) AS P95_POST_CURRENT_MINUTES,
-            COUNT_IF(POST_LAST_CURRENT_MINUTES > 30) AS SESSIONS_OVER_30_MIN,
-            COUNT_IF(POST_LAST_CURRENT_MINUTES > 60) AS SESSIONS_OVER_60_MIN
-        FROM JPL_ANALYTICS.MART.SESSION_POST_CURRENT
-        WHERE LOCAL_DATE >= ? AND LOCAL_DATE < ?
-          AND POST_LAST_CURRENT_MINUTES >= 0
-    """, params)
+    q3b = query(Q3_POST_LAST_CURRENT_SQL, params)
     qrow = q3b.iloc[0]
     a, b, c = st.columns(3)
-    a.metric("Phiên đủ mốc dòng điện", f"{int(numeric_or_zero(qrow['VALID_SESSIONS'])):,}")
-    b.metric("Trung vị sau mẫu cuối", f"{numeric_or_zero(qrow['MEDIAN_POST_CURRENT_MINUTES']):.1f} phút")
-    c.metric("P95 sau mẫu cuối", f"{numeric_or_zero(qrow['P95_POST_CURRENT_MINUTES']):.1f} phút")
-    st.caption("Mốc cuối được tính trực tiếp từ timestamp có charging_current_a > 0 trong Static. Chỉ các phiên ghép được với API mới có disconnect_time để tính khoảng sau kết nối.")
+    a.metric("Phiên đủ điều kiện", f"{int(numeric_or_zero(qrow['VALID_SESSIONS'])):,}")
+    b.metric(
+        "Trung vị từ mẫu dòng điện dương cuối",
+        f"{numeric_or_zero(qrow['MEDIAN_POST_CURRENT_MINUTES']):.1f} phút",
+    )
+    c.metric(
+        "P95 từ mẫu dòng điện dương cuối",
+        f"{numeric_or_zero(qrow['P95_POST_CURRENT_MINUTES']):.1f} phút",
+    )
+    st.caption(
+        "Khoảng thời gian được tính từ timestamp cuối cùng có charging_current_a > 0 "
+        "trong Static đến disconnect_time của API. Đây không phải thời điểm pin đầy hay "
+        "thời điểm sạc kết thúc chính xác; kết quả chỉ có ở các phiên ghép API–Static hợp lệ."
+    )
 except Exception as exc:
     show_query_error("Lỗi Q3; kiểm tra MART.SESSION_POST_CURRENT và dữ liệu Static", exc)
 
 # Q4
 st.header("Q4. Năng lượng yêu cầu so với năng lượng thực nhận")
 try:
-    q4 = query("""
-        WITH LATEST_REQUEST AS (
-            SELECT *
-            FROM JPL_ANALYTICS.WAREHOUSE.FACT_USER_REQUESTS
-            QUALIFY ROW_NUMBER() OVER (
-                PARTITION BY SESSION_ID
-                ORDER BY MODIFIED_AT DESC NULLS LAST, INPUT_ID DESC
-            ) = 1
-        )
-        SELECT
-            F.SESSION_ID,
-            F.STATION_ID,
-            F.ENERGY_KWH AS DELIVERED_KWH,
-            L.KWH_REQUESTED,
-            100.0 * F.ENERGY_KWH / NULLIF(L.KWH_REQUESTED,0) AS DELIVERED_VS_REQUESTED_PCT
-        FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS F
-        JOIN LATEST_REQUEST L USING (SESSION_ID)
-        WHERE F.LOCAL_DATE >= ? AND F.LOCAL_DATE < ?
-          AND L.KWH_REQUESTED > 0
-    """, params)
+    q4 = query(Q4_LATEST_REQUESTS_SQL, params)
+    total_sessions_df = query(Q4_TOTAL_SESSIONS_SQL, params)
+    total_sessions = int(numeric_or_zero(total_sessions_df.iloc[0]["TOTAL_SESSIONS"]))
+    valid_request_sessions = len(q4)
+    request_coverage_pct = (
+        100.0 * valid_request_sessions / total_sessions if total_sessions else 0.0
+    )
+
+    a, b, c, d = st.columns(4)
+    a.metric("Tổng phiên trong phạm vi lọc", f"{total_sessions:,}")
+    b.metric("Phiên có yêu cầu hợp lệ", f"{valid_request_sessions:,}")
+    c.metric("Độ bao phủ yêu cầu hợp lệ", f"{request_coverage_pct:.2f}%")
     if not q4.empty:
-        ratio = pd.to_numeric(q4["DELIVERED_VS_REQUESTED_PCT"], errors="coerce")
-        a, b, c = st.columns(3)
-        a.metric("Phiên có yêu cầu hợp lệ", f"{len(q4):,}")
-        b.metric("Trung vị thực nhận/yêu cầu", f"{ratio.median():.1f}%")
-        c.metric("Phiên đạt ≥ 90%", f"{100 * (ratio >= 90).mean():.1f}%")
+        ratio = pd.to_numeric(
+            q4["DELIVERED_VS_REQUESTED_PCT"], errors="coerce"
+        ).dropna()
+        d.metric(
+            "Trung vị thực nhận/yêu cầu",
+            f"{ratio.median():.1f}%" if not ratio.empty else "N/A",
+        )
         lim = float(max(q4["KWH_REQUESTED"].max(), q4["DELIVERED_KWH"].max())) * 1.05
         fig = px.scatter(
-            q4, x="KWH_REQUESTED", y="DELIVERED_KWH", color="STATION_ID",
+            q4,
+            x="KWH_REQUESTED",
+            y="DELIVERED_KWH",
+            color="STATION_ID",
             hover_data=["SESSION_ID", "DELIVERED_VS_REQUESTED_PCT"],
             title="kWh yêu cầu cuối cùng và kWh thực nhận",
+            render_mode="svg",
+            labels={
+                "KWH_REQUESTED": "Năng lượng yêu cầu (kWh)",
+                "DELIVERED_KWH": "Năng lượng thực nhận (kWh)",
+                "STATION_ID": "EVSE",
+            },
         )
-        fig.add_shape(type="line", x0=0, y0=0, x1=lim, y1=lim, line={"dash":"dash"})
+        fig.add_shape(
+            type="line", x0=0, y0=0, x1=lim, y1=lim,
+            line={"dash": "dash"},
+        )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("Chọn bản userInputs mới nhất theo modified_at rồi mới lọc kWh_requested > 0. Phép so sánh mô tả không chứng minh nguyên nhân chênh lệch.")
+        st.caption(
+            "Chọn userInputs mới nhất theo modified_at và input_id trước khi lọc "
+            "kWh_requested > 0. Độ bao phủ = số phiên có yêu cầu kWh hợp lệ / tổng phiên "
+            "trong khoảng lọc. Tỷ lệ thực nhận/yêu cầu là so sánh mô tả, không chứng minh nguyên nhân chênh lệch."
+        )
     else:
+        d.metric("Trung vị thực nhận/yêu cầu", "N/A")
         st.info("Không có phiên nào có yêu cầu kWh hợp lệ trong khoảng đang chọn.")
 except Exception as exc:
     show_query_error("Lỗi Q4", exc)
 
 # Q5
 st.header("Q5. Power quan sát và độ bao phủ dữ liệu theo thời gian")
-try:
-    power_summary = query("""
-        SELECT
-            SUM(TOTAL_SAMPLES) AS TOTAL_SAMPLES,
-            SUM(POWER_SAMPLES) AS POWER_SAMPLES,
-            100.0 * SUM(POWER_SAMPLES) / NULLIF(SUM(TOTAL_SAMPLES),0) AS POWER_ROW_COVERAGE_PCT,
-            COUNT(*) AS STATION_HOUR_BUCKETS,
-            COUNT(DISTINCT STATION_ID) AS STATIONS
-        FROM JPL_ANALYTICS.MART.POWER_STATION_HOUR
-        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
-    """, params)
-    prow = power_summary.iloc[0]
-    if numeric_or_zero(prow["TOTAL_SAMPLES"]) == 0:
-        st.warning(
-            "Chưa có Static measurements trong Snowflake. Q5 chỉ hiển thị đầy đủ sau khi "
-            "chạy scripts/deploy_snowflake.py --include-static và tạo Power marts."
-        )
-    a, b, c, d = st.columns(4)
-    a.metric("Static samples", f"{int(numeric_or_zero(prow['TOTAL_SAMPLES'])):,}")
-    b.metric("Power row coverage", f"{numeric_or_zero(prow['POWER_ROW_COVERAGE_PCT']):.2f}%")
-    c.metric("Station-hour buckets", f"{int(numeric_or_zero(prow['STATION_HOUR_BUCKETS'])):,}")
-    d.metric("EVSE có quan sát", f"{int(numeric_or_zero(prow['STATIONS'])):,}")
+POWER_START_DATE = "2020-07-01"
+POWER_END_DATE_EXCLUSIVE = "2020-12-01"
+power_start_date = max(start_date, POWER_START_DATE)
+power_end_date = min(end_date_exclusive, POWER_END_DATE_EXCLUSIVE)
 
-    monthly_power = query("""
-        SELECT *
-        FROM JPL_ANALYTICS.MART.POWER_STATION_MONTH
-        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
-        ORDER BY LOCAL_MONTH, STATION_ID
-    """, params)
-    if not monthly_power.empty:
-        # Complete EVSE × month grid: no row means no observation, not zero Power.
-        station_ids = sorted(monthly_power["STATION_ID"].dropna().unique().tolist())
-        monthly_power["MONTH_LABEL"] = pd.to_datetime(
-            monthly_power["LOCAL_MONTH"]
-        ).dt.strftime("%Y-%m")
-        month_values = sorted(monthly_power["MONTH_LABEL"].unique().tolist())
-        complete_index = pd.MultiIndex.from_product(
-            [station_ids, month_values], names=["STATION_ID", "MONTH_LABEL"]
+if power_start_date >= power_end_date:
+    st.info(
+        "Q5 chỉ có dữ liệu Power trong cửa sổ phân tích 07/2020–11/2020. "
+        "Hãy điều chỉnh khoảng tháng để giao với cửa sổ này."
+    )
+else:
+    power_params = [power_start_date, power_end_date]
+    try:
+        power_summary = query(Q5_POWER_SUMMARY_SQL, power_params)
+        site_hour_summary = query(Q5_SITE_HOUR_SUMMARY_SQL, power_params)
+        prow = power_summary.iloc[0]
+        srow = site_hour_summary.iloc[0]
+
+        a, b, c, d, e = st.columns(5)
+        a.metric("Static samples", f"{int(numeric_or_zero(prow['TOTAL_SAMPLES'])):,}")
+        b.metric("Power samples", f"{int(numeric_or_zero(prow['POWER_SAMPLES'])):,}")
+        c.metric(
+            "Power row coverage",
+            f"{numeric_or_zero(prow['POWER_ROW_COVERAGE_PCT']):.2f}%",
+            help="Power samples / toàn bộ hàng Static trong cửa sổ đã chọn.",
         )
-        complete = (
-            monthly_power.set_index(["STATION_ID", "MONTH_LABEL"])
-            .reindex(complete_index)
-            .reset_index()
+        e.metric(
+            "Site-hour coverage",
+            f"{numeric_or_zero(srow['SITE_HOUR_OBSERVATION_COVERAGE_PCT']):.1f}%",
+            help=(
+                f"{int(numeric_or_zero(srow['HOURS_WITH_OBSERVATION'])):,} / "
+                f"{int(numeric_or_zero(srow['EXPECTED_UTC_HOURS'])):,} giờ UTC có ít nhất "
+                "một EVSE ghi nhận."
+            ),
         )
-        complete["CALENDAR_HOUR_OBSERVATION_PCT"] = pd.to_numeric(
-            complete["CALENDAR_HOUR_OBSERVATION_PCT"], errors="coerce"
-        ).fillna(0.0)
-        complete["OBSERVED_UTC_HOURS"] = pd.to_numeric(
-            complete["OBSERVED_UTC_HOURS"], errors="coerce"
-        ).fillna(0)
-        coverage = complete.groupby("MONTH_LABEL", as_index=False).agg(
-            MEAN_STATION_COVERAGE_PCT=("CALENDAR_HOUR_OBSERVATION_PCT", "mean"),
-            MEDIAN_STATION_COVERAGE_PCT=("CALENDAR_HOUR_OBSERVATION_PCT", "median"),
-            STATIONS_WITH_OBSERVATION=("OBSERVED_UTC_HOURS", lambda x: int((x > 0).sum())),
+        d.metric("EVSE có quan sát", f"{int(numeric_or_zero(prow['STATIONS'])):,}")
+        st.caption(
+            f"Station-hour buckets: {int(numeric_or_zero(prow['STATION_HOUR_BUCKETS'])):,} · "
+            f"Giờ UTC có quan sát: {int(numeric_or_zero(srow['HOURS_WITH_OBSERVATION'])):,} · "
+            f"Không có quan sát: {int(numeric_or_zero(srow['HOURS_WITHOUT_OBSERVATION'])):,}."
         )
-        left, right = st.columns(2)
-        with left:
-            st.plotly_chart(
-                px.line(coverage, x="MONTH_LABEL",
+
+        monthly_power = query(Q5_MONTHLY_POWER_SQL, power_params)
+        station_scope = query(Q5_STATION_SCOPE_SQL)
+        station_ids = station_scope["STATION_ID"].dropna().astype(str).tolist()
+        first_month = pd.Period(pd.Timestamp(power_start_date), freq="M")
+        last_month = pd.Period(
+            pd.Timestamp(power_end_date) - pd.Timedelta(days=1), freq="M"
+        )
+        month_values = [
+            str(month)
+            for month in pd.period_range(first_month, last_month, freq="M")
+        ]
+
+        if station_ids and month_values:
+            if not monthly_power.empty:
+                monthly_power["MONTH_LABEL"] = pd.to_datetime(
+                    monthly_power["LOCAL_MONTH"]
+                ).dt.strftime("%Y-%m")
+            else:
+                monthly_power["MONTH_LABEL"] = pd.Series(dtype="object")
+
+            complete_index = pd.MultiIndex.from_product(
+                [station_ids, month_values],
+                names=["STATION_ID", "MONTH_LABEL"],
+            )
+            complete = (
+                monthly_power.set_index(["STATION_ID", "MONTH_LABEL"])
+                .reindex(complete_index)
+                .reset_index()
+            )
+            complete["CALENDAR_HOUR_OBSERVATION_PCT"] = pd.to_numeric(
+                complete["CALENDAR_HOUR_OBSERVATION_PCT"], errors="coerce"
+            ).fillna(0.0)
+            complete["OBSERVED_UTC_HOURS"] = pd.to_numeric(
+                complete["OBSERVED_UTC_HOURS"], errors="coerce"
+            ).fillna(0)
+            coverage = complete.groupby("MONTH_LABEL", as_index=False).agg(
+                MEAN_STATION_COVERAGE_PCT=(
+                    "CALENDAR_HOUR_OBSERVATION_PCT", "mean"
+                ),
+                MEDIAN_STATION_COVERAGE_PCT=(
+                    "CALENDAR_HOUR_OBSERVATION_PCT", "median"
+                ),
+                STATIONS_WITH_OBSERVATION=(
+                    "OBSERVED_UTC_HOURS", lambda values: int((values > 0).sum())
+                ),
+            )
+            left, right = st.columns(2)
+            with left:
+                st.plotly_chart(
+                    px.line(
+                        coverage,
+                        x="MONTH_LABEL",
                         y=["MEAN_STATION_COVERAGE_PCT", "MEDIAN_STATION_COVERAGE_PCT"],
-                        markers=True, title="Coverage giờ có quan sát trung bình/trung vị theo tháng"),
-                use_container_width=True,
-            )
-        with right:
+                        markers=True,
+                        title="Coverage giờ có quan sát trung bình/trung vị theo tháng",
+                        labels={
+                            "MONTH_LABEL": "Tháng",
+                            "value": "Giờ có quan sát (%)",
+                            "variable": "Chỉ số",
+                        },
+                    ),
+                    use_container_width=True,
+                )
+            with right:
+                st.plotly_chart(
+                    px.bar(
+                        coverage,
+                        x="MONTH_LABEL",
+                        y="STATIONS_WITH_OBSERVATION",
+                        title="Số EVSE có ít nhất một quan sát trong tháng",
+                        labels={
+                            "MONTH_LABEL": "Tháng",
+                            "STATIONS_WITH_OBSERVATION": "Số EVSE",
+                        },
+                    ),
+                    use_container_width=True,
+                )
             st.plotly_chart(
-                px.bar(coverage, x="MONTH_LABEL", y="STATIONS_WITH_OBSERVATION",
-                       title="Số EVSE có ít nhất một quan sát trong tháng"),
+                px.imshow(
+                    complete.pivot(
+                        index="STATION_ID",
+                        columns="MONTH_LABEL",
+                        values="CALENDAR_HOUR_OBSERVATION_PCT",
+                    ),
+                    aspect="auto",
+                    labels={"x": "Tháng", "y": "EVSE", "color": "Giờ có quan sát (%)"},
+                    title="Heatmap coverage EVSE × tháng (không có quan sát = 0% coverage)",
+                ),
                 use_container_width=True,
             )
-        st.plotly_chart(
-            px.imshow(
-                complete.pivot(index="STATION_ID", columns="MONTH_LABEL",
-                               values="CALENDAR_HOUR_OBSERVATION_PCT").fillna(0),
-                aspect="auto",
-                labels={"x":"Tháng","y":"EVSE","color":"Giờ có quan sát (%)"},
-                title="Heatmap coverage EVSE × tháng (tháng không quan sát = 0%)",
-            ),
-            use_container_width=True,
-        )
 
-    site_hour_profile = query("""
-        SELECT
-            LOCAL_HOUR,
-            AVG(STATIONS_WITH_POWER) AS AVG_EVSE_WITH_POWER,
-            MAX(STATIONS_WITH_POWER) AS MAX_EVSE_WITH_POWER,
-            AVG(SELECTED_STATION_POWER_COVERAGE_PCT) AS AVG_HOURLY_COVERAGE_PCT,
-            COUNT_IF(SITE_HOUR_HAS_ANY_OBSERVATION) AS DAYS_HOURS_WITH_OBSERVATION
-        FROM JPL_ANALYTICS.MART.POWER_SITE_HOUR
-        WHERE LOCAL_DATE >= TO_DATE(?) AND LOCAL_DATE < TO_DATE(?)
-        GROUP BY LOCAL_HOUR
-        ORDER BY LOCAL_HOUR
-    """, params)
-    if not site_hour_profile.empty:
-        st.plotly_chart(
-            px.line(
-                site_hour_profile,
-                x="LOCAL_HOUR",
-                y=["AVG_EVSE_WITH_POWER", "MAX_EVSE_WITH_POWER"],
-                markers=True,
-                title="Số EVSE có ít nhất một mẫu Power theo giờ địa phương",
-                labels={"LOCAL_HOUR": "Giờ", "value": "Số EVSE", "variable": "Chỉ số"},
-            ),
-            use_container_width=True,
-        )
-        st.dataframe(site_hour_profile, use_container_width=True, hide_index=True)
+        site_hour_profile = query(Q5_SITE_HOUR_PROFILE_SQL, power_params)
+        if not site_hour_profile.empty:
+            st.plotly_chart(
+                px.line(
+                    site_hour_profile,
+                    x="LOCAL_HOUR",
+                    y=["AVG_EVSE_WITH_POWER", "MAX_EVSE_WITH_POWER"],
+                    markers=True,
+                    title="Số EVSE có ít nhất một mẫu Power theo giờ địa phương",
+                    labels={"LOCAL_HOUR": "Giờ", "value": "Số EVSE", "variable": "Chỉ số"},
+                ),
+                use_container_width=True,
+            )
+            display_site_hour = site_hour_profile.rename(columns={
+                "LOCAL_HOUR": "Giờ địa phương",
+                "AVG_EVSE_WITH_POWER": "EVSE có Power trung bình",
+                "MAX_EVSE_WITH_POWER": "EVSE có Power tối đa",
+                "AVG_HOURLY_COVERAGE_PCT": "Coverage trung bình (%)",
+                "HOURS_WITH_OBSERVATION": "Số giờ có quan sát",
+            })
+            st.dataframe(display_site_hour, use_container_width=True, hide_index=True)
 
-    hod = query("""
-        SELECT
-            LOCAL_HOUR,
-            AVG(AVG_POWER_KW) AS MEAN_STATION_HOUR_POWER_KW,
-            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY AVG_POWER_KW) AS P95_STATION_HOUR_POWER_KW,
-            COUNT(*) AS STATION_HOUR_OBSERVATIONS,
-            COUNT(DISTINCT STATION_ID) AS STATIONS_OBSERVED,
-            SUM(POWER_SAMPLES) AS POWER_SAMPLES,
-            SUM(TOTAL_SAMPLES) AS TOTAL_SAMPLES
-        FROM JPL_ANALYTICS.MART.POWER_STATION_HOUR
-        WHERE LOCAL_MONTH >= TO_DATE(?) AND LOCAL_MONTH < TO_DATE(?)
-          AND POWER_SAMPLES > 0
-        GROUP BY LOCAL_HOUR
-        ORDER BY LOCAL_HOUR
-    """, params)
-    if not hod.empty:
-        st.plotly_chart(
-            px.line(hod, x="LOCAL_HOUR",
-                    y=["MEAN_STATION_HOUR_POWER_KW","P95_STATION_HOUR_POWER_KW"],
-                    markers=True, title="Phân bố Power trung bình/P95 theo giờ địa phương"),
-            use_container_width=True,
+        hod = query(Q5_HOUR_OF_DAY_POWER_SQL, power_params)
+        if not hod.empty:
+            st.plotly_chart(
+                px.line(
+                    hod,
+                    x="LOCAL_HOUR",
+                    y=["MEAN_STATION_HOUR_POWER_KW", "P95_STATION_HOUR_POWER_KW"],
+                    markers=True,
+                    title="Phân bố Power trung bình/P95 theo giờ địa phương",
+                    labels={
+                        "LOCAL_HOUR": "Giờ địa phương",
+                        "value": "Power (kW)",
+                        "variable": "Chỉ số",
+                    },
+                ),
+                use_container_width=True,
+            )
+        st.warning(
+            "Static là chuỗi phép đo theo phiên, không phải telemetry 24/7. "
+            "Giờ không có bản ghi không đồng nghĩa EVSE hỏng. "
+            "Trung bình station-hour giữa các trạm không đồng bộ; không cộng chúng để gọi là tổng phụ tải JPL."
         )
-    st.warning(
-        "Static là chuỗi phép đo theo phiên, không phải telemetry 24/7. "
-        "Giờ không có bản ghi không đồng nghĩa EVSE hỏng. "
-        "Trung bình station-hour giữa các trạm không đồng bộ; không cộng chúng để gọi là tổng phụ tải JPL."
-    )
-except Exception as exc:
-    st.error(
-        "Chưa có Power marts hoặc dữ liệu Static chưa được nạp. "
-        "Hãy chạy scripts/deploy_snowflake.py --include-static và kiểm tra "
-        "snowflake/03_power_marts.sql."
-    )
-    st.exception(exc)
+        st.caption(
+            f"Phạm vi Q5: {power_start_date} đến {power_end_date} (ngày kết thúc không bao gồm). "
+            "Độ phủ giờ dùng lưới UTC đầy đủ, bao gồm giờ không có quan sát."
+        )
+    except Exception as exc:
+        st.error(
+            "Không tải được phân tích Power. Hãy kiểm tra MART.POWER_STATION_HOUR, "
+            "MART.POWER_STATION_MONTH và MART.POWER_SITE_HOUR."
+        )
+        st.exception(exc)
 
 st.caption("Nguồn: ACN-Data API và ACN-Data Static — JPL Arroyo Garage 01. Mọi kết luận phải được diễn giải trong giới hạn độ bao phủ và dữ liệu quan sát.")
