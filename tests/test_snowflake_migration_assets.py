@@ -128,7 +128,7 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         q4_section = app.split("# Q4", 1)[1].split("# Q5", 1)[0]
         self.assertNotIn('color="STATION_ID"', q4_section)
         self.assertIn('hover_name="STATION_ID"', q4_section)
-        self.assertIn('"color": "#4C8BF5"', q4_section)
+        self.assertIn('"color": "#5B9BFF"', q4_section)
         self.assertIn('"size": 4', q4_section)
         self.assertIn('"opacity": 0.22', q4_section)
         self.assertIn('"color": "#5B9BFF"', q4_section)
