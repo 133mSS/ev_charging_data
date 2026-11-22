@@ -20,8 +20,6 @@ GROUP BY STATION_ID;
 
 -- Conform user IDs from both API surfaces. Session IDs may be zero-padded
 -- while userInputs IDs are not; keep one canonical key without discarding source IDs.
--- Conform user IDs from both API surfaces. Session IDs may be zero-padded
--- while userInputs IDs are not; keep one canonical key without discarding source IDs.
 CREATE OR REPLACE TABLE WAREHOUSE.DIM_USER AS
 WITH USER_ID_SOURCES AS (
     SELECT USER_ID
@@ -36,12 +34,12 @@ NORMALIZED_USER_IDS AS (
     SELECT
         USER_ID,
         CASE
-                WHEN USER_ID IS NULL THEN NULL
-                WHEN TRIM(TO_VARCHAR(USER_ID)) = '' THEN NULL
-                WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')
-                    THEN COALESCE(NULLIF(LTRIM(TRIM(TO_VARCHAR(USER_ID)), '0'), ''), '0')
-                ELSE TRIM(TO_VARCHAR(USER_ID))
-            END AS USER_ID_KEY
+            WHEN USER_ID IS NULL THEN NULL
+            WHEN TRIM(TO_VARCHAR(USER_ID)) = '' THEN NULL
+            WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')
+                THEN COALESCE(NULLIF(LTRIM(TRIM(TO_VARCHAR(USER_ID)), '0'), ''), '0')
+            ELSE TRIM(TO_VARCHAR(USER_ID))
+        END AS USER_ID_KEY
     FROM USER_ID_SOURCES
 )
 SELECT
