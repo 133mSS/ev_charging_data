@@ -92,7 +92,56 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("FROM RAW.STG_CHARGING_SESSIONS", sql)
         self.assertIn("FROM RAW.STG_USER_INPUTS", sql)
         self.assertIn("AS USER_ID_KEY", sql)
-        self.assertIn("REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+    def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
+        self.assertIn("REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')", sql)
+        self.assertIn("    USER_ID,\n    CASE", sql)
+
+    def test_user_id_key_migration_is_incremental_and_avoids_static_rebuild(self):
+        sql = read("snowflake/06_user_id_key_migration.sql")
+        for table in [
+            "WAREHOUSE.DIM_USER",
+            "WAREHOUSE.FACT_CHARGING_SESSIONS",
+            "WAREHOUSE.FACT_USER_REQUESTS",
+        ]:
+            self.assertIn(f"ALTER TABLE {table}", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS USER_ID_KEY VARCHAR", sql)
+        self.assertIn("UPDATE WAREHOUSE.DIM_USER", sql)
+        self.assertIn("ORPHAN_REQUEST_USER_KEYS", sql)
+        self.assertIn("REQUEST_SESSION_USER_KEY_MISMATCHES", sql)
+        self.assertIn("Q4_DUPLICATE_SESSION_ROWS_AFTER_LATEST_REQUEST", sql)
+        self.assertNotIn("CREATE OR REPLACE TABLE WAREHOUSE.FACT_STATIC_MEASUREMENTS", sql)
+        self.assertNotIn("CREATE OR REPLACE TABLE MART.POWER_STATION_HOUR", sql)
+
+    def test_data_quality_gate_checks_canonical_user_keys(self):
+        sql = read("snowflake/05_data_quality.sql")
+        for check in [
+            "DUPLICATE_USER_DIMENSION_KEYS",
+            "MISSING_SESSION_USER_KEYS",
+            "MISSING_REQUEST_USER_KEYS",
+            "ORPHAN_SESSION_USER_KEYS",
+            "ORPHAN_REQUEST_USER_KEYS",
+            "REQUEST_SESSION_USER_KEY_MISMATCHES",
+            "ORPHAN_REQUEST_SESSION_KEYS",
+            "Q4_LATEST_REQUEST_DUPLICATE_SESSIONS",
+        ]:
+            self.assertIn(check, sql)
+
+    def test_warehouse_only_deployment_skips_raw_and_power_mart_reload(self):
+        script = read("scripts/deploy_snowflake.py")
+        wrapper = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn('"--warehouse-only"', script)
+        self.assertIn('"snowflake/06_user_id_key_migration.sql"', script)
+        branch = script[script.index("if args.warehouse_only:"):script.index("if args.app_only:")]
+        self.assertNotIn("upload_and_copy(", branch)
+        self.assertNotIn("snowflake/03_power_marts.sql", branch)
+        self.assertIn("[switch]$WarehouseOnly", wrapper)
+        self.assertIn('$PythonArgs += "--warehouse-only"', wrapper)
+
+    def test_q4_validation_reports_session_fanout(self):
+        sql = read("snowflake/04_validation.sql")
+        self.assertIn("COUNT(DISTINCT F.SESSION_ID) AS DISTINCT_SESSIONS_IN_Q4", sql)
+        self.assertIn("COUNT(*) - COUNT(DISTINCT F.SESSION_ID) AS DUPLICATE_SESSION_ROWS", sql)
+
+    def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
         self.assertIn("request_coverage_pct", app)
