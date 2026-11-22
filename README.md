@@ -117,6 +117,10 @@ Warehouse được cấu hình X-Small, auto-resume và auto-suspend 60 giây đ
 - `FACT_USER_REQUESTS`: grain = một dòng cho một lần userInputs cập nhật.
 - `FACT_STATIC_MEASUREMENTS`: view có grain = một dòng cho một phép đo Static.
 
+**Chuẩn hóa định danh người dùng:** RAW và cột `USER_ID` trong hai Fact giữ nguyên giá trị nguồn. Warehouse bổ sung `USER_ID_KEY`, chuẩn hóa số 0 ở đầu đối với mã số và trim khoảng trắng. `DIM_USER.USER_ID_KEY`, `FACT_CHARGING_SESSIONS.USER_ID_KEY` và `FACT_USER_REQUESTS.USER_ID_KEY` là các khóa dùng để đối chiếu. Không dùng trực tiếp `USER_ID` nguồn để JOIN giữa hai API payload.
+
+**Kiểm soát grain/fanout:** Session Fact có một dòng/session; Request Fact có một dòng/(session, input). Không JOIN toàn bộ Request Fact với Session Fact rồi SUM `ENERGY_KWH`. Q4 phải chọn một request mới nhất/session bằng `ROW_NUMBER` trước khi JOIN; kiểm tra Q4 báo số dòng trùng session bằng 0.
+
 View `WAREHOUSE.FACT_STATIC_MEASUREMENTS` giữ toàn bộ Static rows và gắn trạng thái mapping bằng LEFT JOIN. Thiết kế này tránh tạo một bản sao vật lý thứ hai của 175 triệu dòng Static.
 
 ### 4.2. Power marts
@@ -273,16 +277,28 @@ Nếu API đã có trên Snowflake nhưng cần nạp Static riêng:
 
 **Lưu ý:** đây là thao tác nạp lại dữ liệu lớn 175M rows. Không chạy lại chỉ để cập nhật giao diện hoặc SQL dashboard.
 
-### 8.3. Chỉ cập nhật Streamlit, không xử lý lại dữ liệu
+### 8.3. Chuẩn hóa USER_ID trên Warehouse hiện có, không nạp lại dữ liệu
 
-Sau khi lấy nhánh/code mới về local:
+Lấy nhánh đã cập nhật:
 
-    git pull
+    git switch chore/final-project-hardening
+    git pull origin chore/final-project-hardening
+
+Chạy migration có kiểm soát:
+
+    .\scripts\run_snowflake_deploy.ps1 -WarehouseOnly
+
+`-WarehouseOnly` bổ sung và cập nhật `USER_ID_KEY` trong `DIM_USER`, `FACT_CHARGING_SESSIONS` và `FACT_USER_REQUESTS`, sau đó chạy kiểm tra khóa, orphan và grain Q4. Lệnh này không tải lại RAW, không đọc/nạp lại 175M Static rows, không rebuild Power marts và không thay thế các bảng lớn. Giá trị `USER_ID` gốc được giữ nguyên.
+
+Không kết hợp `-WarehouseOnly` với `-IncludeStatic`, `-SkipCoreLoad` hoặc `-AppOnly`.
+
+### 8.4. Chỉ cập nhật Streamlit, không xử lý lại dữ liệu
+
     .\scripts\run_snowflake_deploy.ps1 -AppOnly
 
 `-AppOnly` chỉ upload `streamlit_app.py`, `analytics_queries.py`, `environment.yml` và publish live version; không nạp lại Static, không rebuild 175M-row marts.
 
-### 8.4. Kiểm tra thủ công trên Snowsight
+### 8.5. Kiểm tra thủ công trên Snowsight
 
 Chạy `snowflake/04_validation.sql` để kiểm tra các truy vấn và `snowflake/05_data_quality.sql` để nhận kết quả PASS/FAIL. Xác minh dashboard tại:
 
