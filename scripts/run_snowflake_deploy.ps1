@@ -2,10 +2,14 @@
 param(
     [switch]$IncludeStatic,
     [switch]$SkipCoreLoad,
-    [switch]$AppOnly
+    [switch]$AppOnly,
+    [switch]$WarehouseOnly
 )
 
 $ErrorActionPreference = "Stop"
+if ($WarehouseOnly -and ($IncludeStatic -or $SkipCoreLoad -or $AppOnly)) {
+    throw "-WarehouseOnly cannot be combined with -IncludeStatic, -SkipCoreLoad, or -AppOnly."
+}
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $env:LOCALAPPDATA) {
     throw "LOCALAPPDATA is not defined. Create a Python environment on a drive with free space."
@@ -59,6 +63,9 @@ if ($SkipCoreLoad) {
 }
 if ($AppOnly) {
     $PythonArgs += "--app-only"
+}
+if ($WarehouseOnly) {
+    $PythonArgs += "--warehouse-only"
 }
 
 Push-Location $ProjectRoot
