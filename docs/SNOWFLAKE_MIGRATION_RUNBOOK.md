@@ -126,7 +126,7 @@ Trên máy local, lấy nhánh và chạy:
 ```powershell
 git switch chore/final-project-hardening
 git pull origin chore/final-project-hardening
-.\\scripts\\run_snowflake_deploy.ps1 -WarehouseOnly
+.\scripts\run_snowflake_deploy.ps1 -WarehouseOnly
 ```
 
 Chế độ `-WarehouseOnly` chạy `snowflake/06_user_id_key_migration.sql`. Script chỉ ALTER thêm cột và UPDATE ba bảng nhỏ Session/User; sau đó chạy gate gồm duplicate key, key bị thiếu, orphan user/session, đối chiếu tập user và grain Q4. Script không nạp lại RAW, không quét/reload Static, không rebuild Power marts và không publish lại dashboard.
