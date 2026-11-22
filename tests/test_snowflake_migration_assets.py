@@ -56,6 +56,14 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC >= F.CONNECTION_TIME_UTC", view_sql)
         self.assertIn("L.LAST_NONZERO_CURRENT_UTC <= F.DISCONNECT_TIME_UTC", view_sql)
 
+        quality_sql = read("snowflake/05_data_quality.sql")
+        check_sql = quality_sql[quality_sql.index("'INVALID_POST_LAST_CURRENT_INTERVALS'"):]
+        self.assertIn("FROM MART.SESSION_POST_CURRENT F", check_sql)
+        self.assertIn("INNER JOIN WAREHOUSE.FACT_CHARGING_SESSIONS S", check_sql)
+        self.assertIn("F.LAST_NONZERO_CURRENT_UTC < S.CONNECTION_TIME_UTC", check_sql)
+        self.assertIn("F.LAST_NONZERO_CURRENT_UTC > F.DISCONNECT_TIME_UTC", check_sql)
+        self.assertIn("F.DISCONNECT_TIME_UTC < S.CONNECTION_TIME_UTC", check_sql)
+
     def test_q5_queries_are_parameterized_and_use_the_selected_power_window(self):
         queries = read("snowflake/analytics_queries.py")
         app = read("snowflake/streamlit_app.py")
