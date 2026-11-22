@@ -275,9 +275,12 @@ def has_static_measurements(connection) -> bool:
         return bool(row and row[0] > 0)
 
 
-def run_data_quality_checks(connection) -> None:
-    """Execute the warehouse reconciliation checks and stop on any failed check."""
-    sql_path = ROOT / "snowflake" / "05_data_quality.sql"
+def run_data_quality_checks(
+    connection,
+    relative_path: str = "snowflake/05_data_quality.sql",
+) -> None:
+    """Execute a Snowflake data-quality script and stop on any failed check."""
+    sql_path = ROOT / relative_path
     if not sql_path.exists():
         raise FileNotFoundError(sql_path)
     print(f"\n===== APPLY {sql_path.relative_to(ROOT)} =====", flush=True)
@@ -373,10 +376,32 @@ def main() -> None:
         action="store_true",
         help="Upload and publish Streamlit source only; do not rebuild data or marts.",
     )
+    parser.add_argument(
+        "--warehouse-only",
+        action="store_true",
+        help=(
+            "Apply the targeted USER_ID_KEY migration to existing session/request "
+            "warehouse tables; do not reload RAW or rebuild Static/Power marts."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.app_only and args.warehouse_only:
+        parser.error("--app-only and --warehouse-only cannot be used together.")
+    if args.warehouse_only and (args.include_static or args.skip_core_load):
+        parser.error("--warehouse-only cannot be combined with --include-static or --skip-core-load.")
 
     connection = get_connection()
     try:
+        if args.warehouse_only:
+            run_data_quality_checks(
+                connection,
+                "snowflake/06_user_id_key_migration.sql",
+            )
+            print("\nWarehouse USER_ID_KEY migration completed.")
+            print("RAW tables, Static measurements, and Power marts were not reloaded or rebuilt.")
+            return
+
         if args.app_only:
             deploy_streamlit_app(connection)
             print("\nStreamlit application-only deployment completed.")
