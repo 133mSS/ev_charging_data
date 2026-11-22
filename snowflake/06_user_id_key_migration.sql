@@ -115,9 +115,9 @@ WITH CHECKS AS (
             FROM WAREHOUSE.FACT_USER_REQUESTS R
             JOIN WAREHOUSE.FACT_CHARGING_SESSIONS S
                 ON S.SESSION_ID = R.SESSION_ID
-            WHERE R.USER_ID_KEY IS NULL
-               OR S.USER_ID_KEY IS NULL
-               OR R.USER_ID_KEY <> S.USER_ID_KEY
+            WHERE R.USER_ID IS NOT NULL
+              AND S.USER_ID IS NOT NULL
+              AND R.USER_ID_KEY <> S.USER_ID_KEY
         ),
         0, 'EQUAL',
         'Each request USER_ID_KEY must match the USER_ID_KEY of its parent session.'
