@@ -111,7 +111,29 @@ Lệnh `-AppOnly` chỉ:
 
 Lệnh này không nạp dữ liệu, không chạy các SQL build warehouse/marts và không quét lại 175M Static rows.
 
-### 6.2. Áp dụng thay đổi schema audit mà không nạp lại dữ liệu
+### 6.2. Chuẩn hóa USER_ID trên Warehouse hiện có
+
+Kết quả audit snapshot xác nhận 522/522 người dùng khớp sau khi bỏ số 0 ở đầu; 41.207/41.207 request khớp user của Session sau chuẩn hóa. Không thiếu người dùng và không cần tạo `DIM_REQUEST_USER`.
+
+Thiết kế thống nhất:
+- Giữ nguyên `USER_ID` ở RAW và trong Fact để truy vết giá trị nguồn.
+- Bổ sung `USER_ID_KEY` chuẩn hóa cho `DIM_USER`, `FACT_CHARGING_SESSIONS` và `FACT_USER_REQUESTS`.
+- Dùng `USER_ID_KEY` làm khóa nối; không JOIN bằng hai chuỗi `USER_ID` nguồn khác định dạng.
+- Chỉ chuẩn hóa mã số: bỏ các số 0 ở đầu; mã không phải số chỉ được trim khoảng trắng.
+
+Trên máy local, lấy nhánh và chạy:
+
+```powershell
+git switch chore/final-project-hardening
+git pull origin chore/final-project-hardening
+.\\scripts\\run_snowflake_deploy.ps1 -WarehouseOnly
+```
+
+Chế độ `-WarehouseOnly` chạy `snowflake/06_user_id_key_migration.sql`. Script chỉ ALTER thêm cột và UPDATE ba bảng nhỏ Session/User; sau đó chạy gate gồm duplicate key, key bị thiếu, orphan user/session, đối chiếu tập user và grain Q4. Script không nạp lại RAW, không quét/reload Static, không rebuild Power marts và không publish lại dashboard.
+
+Chỉ chạy khi RAW và ba bảng Warehouse hiện tại đã tồn tại. Không kết hợp `-WarehouseOnly` với `-IncludeStatic`, `-SkipCoreLoad` hoặc `-AppOnly`.
+
+### 6.3. Áp dụng thay đổi schema audit mà không nạp lại dữ liệu
 
 Nhánh hardening bổ sung các cột `RUN_ID`, `FILE_SIZE_BYTES`, `SOURCE_SHA256`, `COPY_QUERY_ID` cho `RAW.LOAD_AUDIT`.
 
@@ -119,7 +141,7 @@ Có thể chạy `snowflake/01_raw_staging.sql` trong Snowsight để áp dụng
 
 Sau đó chạy `snowflake/05_data_quality.sql` trong Snowsight để kiểm tra uniqueness, mapping, reconciliation và complete site-hour grid.
 
-### 6.3. Full data deployment
+### 6.4. Full data deployment
 
 Chỉ chạy khi thực sự muốn nạp lại toàn bộ nguồn đã xử lý:
 
@@ -152,6 +174,9 @@ Các check mới gồm:
 - Static row reconciliation.
 - Unmapped Static rows.
 - Orphan station keys.
+- Canonical USER_ID_KEY uniqueness, null-key and orphan-user checks for both facts.
+- Request-to-session referential checks and normalized user-set reconciliation.
+- Q4 latest-request selection must produce at most one row per session.
 - Invalid post-last-current intervals.
 - Đủ 3.673 UTC hours và không trùng UTC hour key.
 - Session/Static facts không rỗng.
