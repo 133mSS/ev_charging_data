@@ -118,6 +118,8 @@ WHERE LOCAL_DATE >= ? AND LOCAL_DATE < ?
   AND POST_LAST_CURRENT_MINUTES >= 0
 """
 
+# Keep the request fact at one row per session before joining session energy.
+# Joining every input event directly would fan out ENERGY_KWH and overstate SUMs.
 Q4_LATEST_REQUESTS_SQL = """
 WITH LATEST_REQUEST AS (
     SELECT *
