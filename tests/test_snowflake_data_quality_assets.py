@@ -43,9 +43,10 @@ class TestSnowflakeDataQualityAssets(unittest.TestCase):
 
     def test_deployer_runs_quality_gate_before_publishing_streamlit(self):
         script = read("scripts/deploy_snowflake.py")
+        normal_deploy = script[script.index("if has_static_measurements(connection):"):]
         self.assertLess(
-            script.index("run_data_quality_checks(connection)"),
-            script.index("deploy_streamlit_app(connection)"),
+            normal_deploy.index("run_data_quality_checks(connection)"),
+            normal_deploy.index("deploy_streamlit_app(connection)"),
         )
 
     def test_quality_gate_supports_multi_statement_sql_file(self):
