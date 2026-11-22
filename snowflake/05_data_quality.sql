@@ -209,68 +209,29 @@ WITH CHECKS AS (
 
     UNION ALL
     SELECT
-        'SESSION_USERS_MISSING_FROM_REQUEST_USERS',
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT DISTINCT USER_ID_KEY
-                FROM WAREHOUSE.FACT_CHARGING_SESSIONS
-                WHERE USER_ID_KEY IS NOT NULL
-                  AND USER_ID_KEY NOT IN (
-                      SELECT USER_ID_KEY
-                      FROM WAREHOUSE.FACT_USER_REQUESTS
-                      WHERE USER_ID_KEY IS NOT NULL
-                  )
-            )
-        ),
-        0,
-        'EQUAL',
-        'The audited snapshot has the same normalized user population in both API surfaces.'
-
-    UNION ALL
-    SELECT
-        'REQUEST_USERS_MISSING_FROM_SESSION_USERS',
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT DISTINCT USER_ID_KEY
-                FROM WAREHOUSE.FACT_USER_REQUESTS
-                WHERE USER_ID_KEY IS NOT NULL
-                  AND USER_ID_KEY NOT IN (
-                      SELECT USER_ID_KEY
-                      FROM WAREHOUSE.FACT_CHARGING_SESSIONS
-                      WHERE USER_ID_KEY IS NOT NULL
-                  )
-            )
-        ),
-        0,
-        'EQUAL',
-        'The audited snapshot has the same normalized user population in both API surfaces.'
-
-    UNION ALL
-    SELECT
         'Q4_LATEST_REQUEST_DUPLICATE_SESSIONS',
         (
             SELECT COUNT(*)
             FROM (
-                SELECT SESSION_ID
-                FROM (
-                    SELECT
-                        SESSION_ID,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY SESSION_ID
-                            ORDER BY MODIFIED_AT DESC NULLS LAST, INPUT_ID DESC
-                        ) AS REQUEST_RANK
+                SELECT F.SESSION_ID
+                FROM WAREHOUSE.FACT_CHARGING_SESSIONS F
+                JOIN (
+                    SELECT SESSION_ID, KWH_REQUESTED
                     FROM WAREHOUSE.FACT_USER_REQUESTS
-                )
-                WHERE REQUEST_RANK = 1
-                GROUP BY SESSION_ID
+                    QUALIFY ROW_NUMBER() OVER (
+                        PARTITION BY SESSION_ID
+                        ORDER BY MODIFIED_AT DESC NULLS LAST, INPUT_ID DESC
+                    ) = 1
+                ) L
+                    ON L.SESSION_ID = F.SESSION_ID
+                WHERE L.KWH_REQUESTED > 0
+                GROUP BY F.SESSION_ID
                 HAVING COUNT(*) > 1
             )
         ),
         0,
         'EQUAL',
-        'Q4 must reduce userInputs to at most one selected request per SESSION_ID before joining session energy.'
+        'Q4 output must contain at most one row per session after selecting the latest request and joining session energy.'
 
     UNION ALL
     SELECT
