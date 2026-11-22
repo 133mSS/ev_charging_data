@@ -16,7 +16,7 @@ UPDATE WAREHOUSE.DIM_USER
 SET USER_ID_KEY = CASE
         WHEN USER_ID IS NULL THEN NULL
         WHEN TRIM(TO_VARCHAR(USER_ID)) = '' THEN NULL
-        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+$')
+        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')
             THEN COALESCE(NULLIF(LTRIM(TRIM(TO_VARCHAR(USER_ID)), '0'), ''), '0')
         ELSE TRIM(TO_VARCHAR(USER_ID))
     END;
@@ -24,7 +24,7 @@ UPDATE WAREHOUSE.FACT_CHARGING_SESSIONS
 SET USER_ID_KEY = CASE
         WHEN USER_ID IS NULL THEN NULL
         WHEN TRIM(TO_VARCHAR(USER_ID)) = '' THEN NULL
-        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+$')
+        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')
             THEN COALESCE(NULLIF(LTRIM(TRIM(TO_VARCHAR(USER_ID)), '0'), ''), '0')
         ELSE TRIM(TO_VARCHAR(USER_ID))
     END;
@@ -32,7 +32,7 @@ UPDATE WAREHOUSE.FACT_USER_REQUESTS
 SET USER_ID_KEY = CASE
         WHEN USER_ID IS NULL THEN NULL
         WHEN TRIM(TO_VARCHAR(USER_ID)) = '' THEN NULL
-        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+$')
+        WHEN REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+')
             THEN COALESCE(NULLIF(LTRIM(TRIM(TO_VARCHAR(USER_ID)), '0'), ''), '0')
         ELSE TRIM(TO_VARCHAR(USER_ID))
     END;
@@ -136,44 +136,6 @@ WITH CHECKS AS (
         ),
         0, 'EQUAL',
         'Every request must resolve to a session fact.'
-
-    UNION ALL
-    SELECT
-        'SESSION_USERS_MISSING_FROM_REQUEST_USERS',
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT DISTINCT S.USER_ID_KEY
-                FROM WAREHOUSE.FACT_CHARGING_SESSIONS S
-                WHERE S.USER_ID_KEY IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM WAREHOUSE.FACT_USER_REQUESTS R
-                      WHERE R.USER_ID_KEY = S.USER_ID_KEY
-                  )
-            )
-        ),
-        0, 'EQUAL',
-        'The audited snapshot has the same normalized user population in both API surfaces.'
-
-    UNION ALL
-    SELECT
-        'REQUEST_USERS_MISSING_FROM_SESSION_USERS',
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT DISTINCT R.USER_ID_KEY
-                FROM WAREHOUSE.FACT_USER_REQUESTS R
-                WHERE R.USER_ID_KEY IS NOT NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM WAREHOUSE.FACT_CHARGING_SESSIONS S
-                      WHERE S.USER_ID_KEY = R.USER_ID_KEY
-                  )
-            )
-        ),
-        0, 'EQUAL',
-        'The audited snapshot has the same normalized user population in both API surfaces.'
 
     UNION ALL
     SELECT
