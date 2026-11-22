@@ -86,6 +86,207 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn("mẫu dòng điện dương cuối", app)
         self.assertIn("không phải thời điểm pin đầy", app)
 
+    def test_warehouse_conforms_user_ids_and_preserves_source_values(self):
+        sql = read("snowflake/02_warehouse.sql")
+        self.assertIn("MIN(USER_ID) AS USER_ID", sql)
+        self.assertIn("FROM RAW.STG_CHARGING_SESSIONS", sql)
+        self.assertIn("FROM RAW.STG_USER_INPUTS", sql)
+        self.assertIn("AS USER_ID_KEY", sql)
+        self.assertIn("REGEXP_LIKE(TRIM(TO_VARCHAR(USER_ID)), '^[0-9]+    def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
+        self.assertIn("request_coverage_pct", app)
+        self.assertIn('render_mode="svg"', app)
+
+    def test_dashboard_sql_is_deployed_as_a_sibling_module(self):
+        app = read("snowflake/streamlit_app.py")
+        deploy = read("scripts/deploy_snowflake.py")
+        self.assertIn("from analytics_queries import", app)
+        self.assertIn('query_module = ROOT / "snowflake" / "analytics_queries.py"', deploy)
+        self.assertIn("STREAMLIT SQL MODULE PUT", deploy)
+
+    def test_streamlit_uses_snowflake_active_session_not_local_postgres(self):
+        app = read("snowflake/streamlit_app.py")
+        self.assertIn("get_active_session", app)
+        self.assertNotIn("import psycopg2", app)
+        self.assertNotIn("from psycopg2", app)
+        self.assertNotIn("DB_PASSWORD", app)
+
+    def test_deployment_uses_put_and_copy_into_without_secrets_in_source(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn("SNOWFLAKE_ACCOUNT", script)
+        self.assertIn("SNOWFLAKE_USER", script)
+        self.assertIn("SNOWFLAKE_PASSWORD", script)
+        self.assertIn("PUT ", script)
+        self.assertIn("COPY INTO", script)
+        self.assertNotIn("password = '", script.lower())
+
+    def test_project_env_overrides_stale_process_environment(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('load_dotenv(ROOT / ".env", override=True)', script)
+
+    def test_oauth_authorization_code_uses_token_identity_without_user_parameter(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('if authenticator != "oauth_authorization_code":', script)
+        self.assertIn('if authenticator != "oauth_authorization_code":\n        kwargs["user"]', script)
+        self.assertIn("OAUTH_USERNAMES_MISMATCH", script)
+
+    def test_sso_authentication_does_not_require_snowflake_password(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake")', script)
+        self.assertIn('authenticator == "externalbrowser"', script)
+        self.assertIn('authenticator == "oauth_authorization_code"', script)
+        self.assertIn('kwargs["authenticator"] = "externalbrowser"', script)
+        self.assertIn('kwargs["authenticator"] = "OAUTH_AUTHORIZATION_CODE"', script)
+        self.assertIn('if authenticator == "snowflake":', script)
+
+    def test_sql_runner_calls_execute_string_on_connection_not_cursor(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn("connection.execute_string(", script)
+        self.assertNotIn("cursor.execute_string(", script)
+
+    def test_first_login_does_not_require_database_or_warehouse_to_exist(self):
+        script = read("scripts/deploy_snowflake.py")
+        start = script.index("    kwargs = {")
+        end = script.index("    }", start)
+        connection_kwargs = script[start:end]
+        self.assertNotIn('"warehouse"', connection_kwargs)
+        self.assertNotIn('"database"', connection_kwargs)
+        self.assertIn('run_sql_file(connection, "snowflake/00_bootstrap.sql")', script)
+
+    def test_windows_wrapper_keeps_environment_and_temp_files_off_project_drive(self):
+        script = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn("$env:LOCALAPPDATA", script)
+        self.assertIn("$env:TEMP", script)
+        self.assertIn("$env:TMP", script)
+        self.assertIn("requirements-snowflake.txt", script)
+        self.assertIn("--include-static", script)
+        self.assertIn("--skip-core-load", script)
+
+    def test_put_and_copy_stage_directories_end_with_slash(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('return f"{STAGE}/{folder}/"', script)
+
+        upload_start = script.index("def upload_and_copy(")
+        upload_assignment = script.index(
+            "stage_path = build_stage_directory(stage_folder)", upload_start
+        )
+        upload_put = script.index(
+            'f"PUT \'{file_uri}\' {stage_path} "', upload_start
+        )
+        self.assertLess(upload_assignment, upload_put)
+
+        app_start = script.index("def deploy_streamlit_app(")
+        app_assignment = script.index(
+            'stage_path = build_stage_directory("app")', app_start
+        )
+        app_put = script.index(
+            'f"PUT \'{file_uri}\' {stage_path} "', app_start
+        )
+        app_create = script.index("FROM '{stage_path}'", app_start)
+        self.assertLess(app_assignment, app_put)
+        self.assertLess(app_assignment, app_create)
+        self.assertNotIn("\\n    stage_path =", script)
+
+    def test_loader_records_run_id_hash_size_and_copy_query_id(self):
+        raw_sql = read("snowflake/01_raw_staging.sql")
+        deploy = read("scripts/deploy_snowflake.py")
+        self.assertIn("RUN_ID VARCHAR", raw_sql)
+        self.assertIn("SOURCE_SHA256 VARCHAR(64)", raw_sql)
+        self.assertIn("COPY_QUERY_ID VARCHAR", raw_sql)
+        self.assertIn("def sha256_file(", deploy)
+        self.assertIn("ETL RUN_ID:", deploy)
+        self.assertIn("FILE_SIZE_BYTES", deploy)
+        self.assertIn("COPY_QUERY_ID", deploy)
+
+    def test_loader_copies_to_temp_then_atomically_replaces_raw_table(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn("CREATE OR REPLACE TEMPORARY TABLE", script)
+        self.assertIn("COPY INTO {temp_table}", script)
+        self.assertIn("DELETE FROM {DATABASE}.RAW.{target_table}", script)
+        self.assertIn("INSERT INTO {DATABASE}.RAW.{target_table}", script)
+        self.assertIn('cursor.execute("BEGIN")', script)
+        self.assertIn('cursor.execute("COMMIT")', script)
+        self.assertIn('cursor.execute("ROLLBACK")', script)
+        self.assertNotIn("TRUNCATE TABLE {DATABASE}.RAW.{target_table}", script)
+        self.assertIn("loaded <= 0", script)
+        self.assertIn("run_data_quality_checks(connection)", script)
+        self.assertIn('ROOT / "snowflake" / "05_data_quality.sql"', script)
+
+    def test_read_only_snowflake_connection_smoke_test_exists(self):
+        script = read("scripts/test_snowflake_connection.py")
+        self.assertIn("from deploy_snowflake import get_connection", script)
+        self.assertIn("CURRENT_USER()", script)
+        self.assertIn("CURRENT_ACCOUNT()", script)
+        self.assertIn("Authentication: SUCCESS", script)
+        self.assertNotIn("CREATE DATABASE", script)
+        self.assertNotIn("COPY INTO", script)
+
+    def test_large_static_load_is_explicit_opt_in(self):
+        script = read("scripts/deploy_snowflake.py")
+        self.assertIn('"--include-static"', script)
+        self.assertIn("if args.include_static:", script)
+
+    def test_app_only_deploy_skips_data_and_mart_rebuild(self):
+        script = read("scripts/deploy_snowflake.py")
+        wrapper = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn('"--app-only"', script)
+        app_only = script[script.index('if args.app_only:'):script.index('run_id = str(uuid.uuid4())')]
+        self.assertIn("deploy_streamlit_app(connection)", app_only)
+        self.assertNotIn("run_sql_file(connection, \"snowflake/03_power_marts.sql\")", app_only)
+        self.assertIn("[switch]$AppOnly", wrapper)
+        self.assertIn('$PythonArgs += "--app-only"', wrapper)
+
+
+if __name__ == "__main__":
+    unittest.main()
+)", sql)
+        self.assertIn("    USER_ID,\n    CASE", sql)
+
+    def test_user_id_key_migration_is_incremental_and_avoids_static_rebuild(self):
+        sql = read("snowflake/06_user_id_key_migration.sql")
+        for table in [
+            "WAREHOUSE.DIM_USER",
+            "WAREHOUSE.FACT_CHARGING_SESSIONS",
+            "WAREHOUSE.FACT_USER_REQUESTS",
+        ]:
+            self.assertIn(f"ALTER TABLE {table}", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS USER_ID_KEY VARCHAR", sql)
+        self.assertIn("UPDATE WAREHOUSE.DIM_USER", sql)
+        self.assertIn("ORPHAN_REQUEST_USER_KEYS", sql)
+        self.assertIn("Q4_DUPLICATE_SESSION_ROWS_AFTER_LATEST_REQUEST", sql)
+        self.assertNotIn("CREATE OR REPLACE TABLE WAREHOUSE.FACT_STATIC_MEASUREMENTS", sql)
+        self.assertNotIn("CREATE OR REPLACE TABLE MART.POWER_STATION_HOUR", sql)
+
+    def test_data_quality_gate_checks_canonical_user_keys(self):
+        sql = read("snowflake/05_data_quality.sql")
+        for check in [
+            "DUPLICATE_USER_DIMENSION_KEYS",
+            "MISSING_SESSION_USER_KEYS",
+            "MISSING_REQUEST_USER_KEYS",
+            "ORPHAN_SESSION_USER_KEYS",
+            "ORPHAN_REQUEST_USER_KEYS",
+            "ORPHAN_REQUEST_SESSION_KEYS",
+            "Q4_LATEST_REQUEST_DUPLICATE_SESSIONS",
+        ]:
+            self.assertIn(check, sql)
+
+    def test_warehouse_only_deployment_skips_raw_and_power_mart_reload(self):
+        script = read("scripts/deploy_snowflake.py")
+        wrapper = read("scripts/run_snowflake_deploy.ps1")
+        self.assertIn('"--warehouse-only"', script)
+        self.assertIn('"snowflake/06_user_id_key_migration.sql"', script)
+        branch = script[script.index("if args.warehouse_only:"):script.index("if args.app_only:")]
+        self.assertNotIn("upload_and_copy(", branch)
+        self.assertNotIn("snowflake/03_power_marts.sql", branch)
+        self.assertIn("[switch]$WarehouseOnly", wrapper)
+        self.assertIn('$PythonArgs += "--warehouse-only"', wrapper)
+
+    def test_q4_validation_reports_session_fanout(self):
+        sql = read("snowflake/04_validation.sql")
+        self.assertIn("COUNT(DISTINCT F.SESSION_ID) AS DISTINCT_SESSIONS_IN_Q4", sql)
+        self.assertIn("COUNT(*) - COUNT(DISTINCT F.SESSION_ID) AS DUPLICATE_SESSION_ROWS", sql)
+
     def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
         self.assertIn("Q4_TOTAL_SESSIONS_SQL", app)
