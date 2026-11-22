@@ -267,6 +267,7 @@ if __name__ == "__main__":
             "MISSING_REQUEST_USER_KEYS",
             "ORPHAN_SESSION_USER_KEYS",
             "ORPHAN_REQUEST_USER_KEYS",
+            "REQUEST_SESSION_USER_KEY_MISMATCHES",
             "ORPHAN_REQUEST_SESSION_KEYS",
             "Q4_LATEST_REQUEST_DUPLICATE_SESSIONS",
         ]:
