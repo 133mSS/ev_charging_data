@@ -111,6 +111,153 @@ WITH CHECKS AS (
 
     UNION ALL
     SELECT
+        'DUPLICATE_USER_DIMENSION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT USER_ID_KEY
+                FROM WAREHOUSE.DIM_USER
+                GROUP BY USER_ID_KEY
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'DIM_USER must have one row per canonical USER_ID_KEY.'
+
+    UNION ALL
+    SELECT
+        'MISSING_SESSION_USER_KEYS',
+        (
+            SELECT COALESCE(COUNT_IF(USER_ID IS NOT NULL AND USER_ID_KEY IS NULL), 0)
+            FROM WAREHOUSE.FACT_CHARGING_SESSIONS
+        ),
+        0,
+        'EQUAL',
+        'Every non-null source USER_ID in the session fact must have a canonical key.'
+
+    UNION ALL
+    SELECT
+        'MISSING_REQUEST_USER_KEYS',
+        (
+            SELECT COALESCE(COUNT_IF(USER_ID IS NOT NULL AND USER_ID_KEY IS NULL), 0)
+            FROM WAREHOUSE.FACT_USER_REQUESTS
+        ),
+        0,
+        'EQUAL',
+        'Every non-null source USER_ID in the request fact must have a canonical key.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_SESSION_USER_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_CHARGING_SESSIONS F
+            LEFT JOIN WAREHOUSE.DIM_USER D
+                ON D.USER_ID_KEY = F.USER_ID_KEY
+            WHERE F.USER_ID_KEY IS NOT NULL
+              AND D.USER_ID_KEY IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every non-null session USER_ID_KEY must resolve to DIM_USER.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_REQUEST_USER_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_USER_REQUESTS F
+            LEFT JOIN WAREHOUSE.DIM_USER D
+                ON D.USER_ID_KEY = F.USER_ID_KEY
+            WHERE F.USER_ID_KEY IS NOT NULL
+              AND D.USER_ID_KEY IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every non-null request USER_ID_KEY must resolve to DIM_USER.'
+
+    UNION ALL
+    SELECT
+        'ORPHAN_REQUEST_SESSION_KEYS',
+        (
+            SELECT COUNT(*)
+            FROM WAREHOUSE.FACT_USER_REQUESTS R
+            LEFT JOIN WAREHOUSE.FACT_CHARGING_SESSIONS S
+                ON S.SESSION_ID = R.SESSION_ID
+            WHERE S.SESSION_ID IS NULL
+        ),
+        0,
+        'EQUAL',
+        'Every request must resolve to exactly one session fact; duplicate session keys are checked separately.'
+
+    UNION ALL
+    SELECT
+        'SESSION_USERS_MISSING_FROM_REQUEST_USERS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT USER_ID_KEY
+                FROM WAREHOUSE.FACT_CHARGING_SESSIONS
+                WHERE USER_ID_KEY IS NOT NULL
+                  AND USER_ID_KEY NOT IN (
+                      SELECT USER_ID_KEY
+                      FROM WAREHOUSE.FACT_USER_REQUESTS
+                      WHERE USER_ID_KEY IS NOT NULL
+                  )
+            )
+        ),
+        0,
+        'EQUAL',
+        'The audited snapshot has the same normalized user population in both API surfaces.'
+
+    UNION ALL
+    SELECT
+        'REQUEST_USERS_MISSING_FROM_SESSION_USERS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT USER_ID_KEY
+                FROM WAREHOUSE.FACT_USER_REQUESTS
+                WHERE USER_ID_KEY IS NOT NULL
+                  AND USER_ID_KEY NOT IN (
+                      SELECT USER_ID_KEY
+                      FROM WAREHOUSE.FACT_CHARGING_SESSIONS
+                      WHERE USER_ID_KEY IS NOT NULL
+                  )
+            )
+        ),
+        0,
+        'EQUAL',
+        'The audited snapshot has the same normalized user population in both API surfaces.'
+
+    UNION ALL
+    SELECT
+        'Q4_LATEST_REQUEST_DUPLICATE_SESSIONS',
+        (
+            SELECT COUNT(*)
+            FROM (
+                SELECT SESSION_ID
+                FROM (
+                    SELECT
+                        SESSION_ID,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY SESSION_ID
+                            ORDER BY MODIFIED_AT DESC NULLS LAST, INPUT_ID DESC
+                        ) AS REQUEST_RANK
+                    FROM WAREHOUSE.FACT_USER_REQUESTS
+                )
+                WHERE REQUEST_RANK = 1
+                GROUP BY SESSION_ID
+                HAVING COUNT(*) > 1
+            )
+        ),
+        0,
+        'EQUAL',
+        'Q4 must reduce userInputs to at most one selected request per SESSION_ID before joining session energy.'
+
+    UNION ALL
+    SELECT
         'DUPLICATE_STATIC_MAPPING_KEYS',
         (
             SELECT COUNT(*)
