@@ -18,6 +18,7 @@ from analytics_queries import (
     Q3_POST_LAST_CURRENT_SQL,
     Q4_LATEST_REQUESTS_SQL,
     Q4_TOTAL_SESSIONS_SQL,
+    Q5_API_STATION_COUNT_SQL,
     Q5_POWER_SUMMARY_SQL,
     Q5_MONTHLY_POWER_SQL,
     Q5_STATION_SCOPE_SQL,
@@ -290,6 +291,7 @@ try:
             "AVG_CONNECTION_MINUTES": "Thời lượng kết nối TB (phút)",
             "ENERGY_SHARE_PCT": "Tỷ trọng năng lượng (%)",
         })
+        st.subheader("Bảng chi tiết theo toàn bộ EVSE trong phạm vi lọc")
         st.dataframe(display_q2, use_container_width=True, hide_index=True)
         top_energy = q2.iloc[0]
         top_sessions = q2.loc[q2["SESSION_COUNT"].idxmax()]
@@ -305,6 +307,7 @@ except Exception as exc:
 # Q3
 st.header("Q3. Thời lượng kết nối và khoảng từ mẫu dòng điện dương cuối đến lúc ngắt kết nối")
 try:
+    total_q3_sessions = 0
     q3a = query(Q3_CONNECTION_DURATION_SQL, params)
     if not q3a.empty:
         q3a = q3a.copy()
@@ -318,7 +321,7 @@ try:
             x="DURATION_GROUP",
             y="SESSION_COUNT",
             text="SESSION_COUNT",
-            title="Số phiên theo nhóm thời lượng kết nối",
+            title=f"Số phiên theo nhóm thời lượng kết nối (n={total_q3_sessions:,} phiên API)",
             labels={"DURATION_GROUP": "Thời lượng kết nối", "SESSION_COUNT": "Số phiên"},
             custom_data=["SESSION_SHARE_PCT"],
         )
@@ -350,7 +353,8 @@ try:
     q3b = query(Q3_POST_LAST_CURRENT_SQL, params)
     qrow = q3b.iloc[0]
     a, b, c = st.columns(3)
-    a.metric("Phiên đủ điều kiện", f"{int(numeric_or_zero(qrow['VALID_SESSIONS'])):,}")
+    valid_q3_sessions = int(numeric_or_zero(qrow["VALID_SESSIONS"]))
+    a.metric("Phiên ghép API–Static hợp lệ", f"{valid_q3_sessions:,}")
     b.metric(
         "Trung vị từ mẫu dòng điện dương cuối",
         f"{numeric_or_zero(qrow['MEDIAN_POST_CURRENT_MINUTES']):.1f} phút",
@@ -360,9 +364,11 @@ try:
         f"{numeric_or_zero(qrow['P95_POST_CURRENT_MINUTES']):.1f} phút",
     )
     st.caption(
-        "Khoảng thời gian được tính từ timestamp cuối cùng có charging_current_a > 0 "
-        "trong Static đến disconnect_time của API. Đây không phải thời điểm pin đầy hay "
-        "thời điểm sạc kết thúc chính xác; kết quả chỉ có ở các phiên ghép API–Static hợp lệ."
+        f"Biểu đồ phân bố thời lượng kết nối sử dụng {total_q3_sessions:,} phiên API có "
+        "thời lượng kết nối hợp lệ; Median và P95 bên dưới chỉ tính trên "
+        f"{valid_q3_sessions:,} phiên ghép API–Static hợp lệ. Khoảng thời gian được tính "
+        "từ timestamp cuối cùng có charging_current_a > 0 trong Static đến disconnect_time "
+        "của API. Đây không phải thời điểm pin đầy hay thời điểm sạc kết thúc chính xác."
     )
 except Exception as exc:
     show_query_error("Lỗi Q3; kiểm tra MART.SESSION_POST_CURRENT và dữ liệu Static", exc)
@@ -420,9 +426,9 @@ try:
         # EVSE identity remains available in the hover tooltip, not as a color category.
         fig.update_traces(
             marker={
-                "color": "#5B9BFF",
-                "size": 4,
-                "opacity": 0.22,
+                "color": "#73AAFF",
+                "size": 5,
+                "opacity": 0.32,
                 "line": {"width": 0},
             },
             hovertemplate=(
@@ -459,7 +465,7 @@ try:
         fig.update_layout(height=620, hovermode="closest")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
-            "Mỗi điểm đại diện một phiên sạc; điểm nhỏ và trong suốt giúp thể hiện mật độ "
+            "Mỗi điểm đại diện một phiên sạc; marker nhỏ với độ trong suốt vừa phải giúp thể hiện mật độ "
             "phiên ở các vùng chồng lấn. Di chuột lên điểm để xem mã EVSE, mã phiên và "
             "các giá trị kWh. Đường nét đứt y = x là mốc thực nhận bằng yêu cầu: điểm dưới "
             "đường có thực nhận thấp hơn yêu cầu, điểm trên đường có thực nhận cao hơn. "
@@ -523,6 +529,18 @@ else:
         monthly_power = query(Q5_MONTHLY_POWER_SQL, power_params)
         station_scope = query(Q5_STATION_SCOPE_SQL)
         station_ids = station_scope["STATION_ID"].dropna().astype(str).tolist()
+        api_station_scope = query(Q5_API_STATION_COUNT_SQL)
+        api_station_count = int(
+            numeric_or_zero(api_station_scope.iloc[0]["API_STATION_COUNT"])
+        )
+        stations_without_power_scope = max(api_station_count - len(station_ids), 0)
+        st.info(
+            f"Cohort Q5 cố định gồm {len(station_ids)} EVSE có ít nhất một quan sát Power "
+            "trong toàn bộ cửa sổ 07–11/2020. "
+            f"Đối chiếu với {api_station_count} EVSE có trong toàn bộ API, "
+            f"{stations_without_power_scope} EVSE không có quan sát Power trong cửa sổ này. "
+            "Không có quan sát không đủ cơ sở kết luận EVSE đã ngừng hoạt động."
+        )
         first_month = pd.Period(pd.Timestamp(power_start_date), freq="M")
         last_month = pd.Period(
             pd.Timestamp(power_end_date) - pd.Timedelta(days=1), freq="M"

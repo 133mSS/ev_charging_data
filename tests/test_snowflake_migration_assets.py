@@ -71,6 +71,12 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn('POWER_END_DATE_EXCLUSIVE = "2020-12-01"', app)
         self.assertIn("power_start_date = max(start_date, POWER_START_DATE)", app)
         self.assertIn("station_scope = query(Q5_STATION_SCOPE_SQL)", app)
+        self.assertIn("Q5_API_STATION_COUNT_SQL", app)
+        self.assertIn("stations_without_power_scope", app)
+        self.assertIn("không có quan sát Power trong cửa sổ này", app)
+        api_scope_sql = queries[queries.index("Q5_API_STATION_COUNT_SQL"):queries.index("Q5_SITE_HOUR_SUMMARY_SQL")]
+        self.assertIn("COUNT(DISTINCT STATION_ID) AS API_STATION_COUNT", api_scope_sql)
+        self.assertIn("FROM JPL_ANALYTICS.WAREHOUSE.FACT_CHARGING_SESSIONS", api_scope_sql)
 
     def test_q4_selects_latest_request_before_filtering_positive_kwh(self):
         queries = read("snowflake/analytics_queries.py")
@@ -152,6 +158,10 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         self.assertIn('text="SESSION_COUNT"', q3_section)
         self.assertIn('texttemplate="%{y:,.0f} · %{customdata[0]:.1f}%"', q3_section)
         self.assertIn('"Tỷ trọng phiên (%)"', q3_section)
+        self.assertIn("total_q3_sessions = 0", q3_section)
+        self.assertIn("n={total_q3_sessions:,} phiên API", q3_section)
+        self.assertIn("valid_q3_sessions", q3_section)
+        self.assertIn("phiên ghép API–Static hợp lệ", q3_section)
 
     def test_q4_exposes_request_coverage_and_scatter_uses_svg(self):
         app = read("snowflake/streamlit_app.py")
@@ -164,10 +174,10 @@ class TestSnowflakeMigrationAssets(unittest.TestCase):
         q4_section = app.split("# Q4", 1)[1].split("# Q5", 1)[0]
         self.assertNotIn('color="STATION_ID"', q4_section)
         self.assertIn('hover_name="STATION_ID"', q4_section)
-        self.assertIn('"color": "#5B9BFF"', q4_section)
-        self.assertIn('"size": 4', q4_section)
-        self.assertIn('"opacity": 0.22', q4_section)
-        self.assertIn('"color": "#5B9BFF"', q4_section)
+        self.assertIn('"color": "#73AAFF"', q4_section)
+        self.assertIn('"size": 5', q4_section)
+        self.assertIn('"opacity": 0.32', q4_section)
+        self.assertIn('"color": "#73AAFF"', q4_section)
         self.assertIn('range=[0, lim]', q4_section)
         self.assertIn('rangemode="tozero"', q4_section)
         self.assertIn('scaleanchor="x"', q4_section)
